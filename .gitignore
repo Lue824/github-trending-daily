@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.claude/
+data/raw/
+data/readmes/
+data/trending.db
+.DS_Store
