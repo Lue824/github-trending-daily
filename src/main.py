@@ -95,20 +95,29 @@ def run_daily():
     # 8. 可选：LLM 深度分析（覆盖报告所有区域的项目）
     llm_analyses = {}
     trend_analysis = ""
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
+    logger.info(f"Step 7: DEEPSEEK_API_KEY configured: {bool(deepseek_key)}, READMEs cached: {len(readme_cache)}")
     try:
         from src.processor.llm_summarize import summarize_project, analyze_trends
-        logger.info(f"Step 7: Running LLM deep analysis on {len(report_repos)} repos...")
-        for full_name, r in report_repos.items():
-            readme = readme_cache.get(full_name, "")
-            if readme:
-                analysis = summarize_project(r, readme)
-                if analysis:
-                    llm_analyses[full_name] = analysis
-        if llm_analyses:
-            trend_analysis = analyze_trends(repos, readme_cache) or ""
-            logger.info(f"LLM analyzed {len(llm_analyses)} projects")
-    except ImportError:
-        logger.info("LLM module not available, skipping deep analysis")
+        if not deepseek_key:
+            logger.info("LLM skipped: DEEPSEEK_API_KEY not configured in GitHub Secrets")
+        elif not readme_cache:
+            logger.warning("LLM skipped: no README content fetched (check GitHub API token)")
+        else:
+            logger.info(f"Running LLM deep analysis on {len(report_repos)} repos...")
+            for full_name, r in report_repos.items():
+                readme = readme_cache.get(full_name, "")
+                if readme:
+                    analysis = summarize_project(r, readme)
+                    if analysis:
+                        llm_analyses[full_name] = analysis
+                    else:
+                        logger.warning(f"LLM returned empty for {full_name}")
+            if llm_analyses:
+                trend_analysis = analyze_trends(repos, readme_cache) or ""
+            logger.info(f"LLM analyzed {len(llm_analyses)} projects, trend_analysis: {bool(trend_analysis)}")
+    except Exception as e:
+        logger.warning(f"LLM analysis failed: {e}", exc_info=True)
 
     # 9. 生成 Markdown 日报
     logger.info("Step 8: Generating daily report...")
