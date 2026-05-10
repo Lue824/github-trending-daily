@@ -73,18 +73,18 @@ def run_daily():
         [r for r in repos if any("trending" in s for s in r.get("sources", []))],
         key=lambda r: r.get("hot_score", 0), reverse=True
     )[:10]
-     new_stars_top = sorted(
-          [r for r in repos if any("new-stars" in s for s in r.get("sources", []))],
-          key=lambda r: r.get("stars", 0), reverse=True
-      )[:10]
-      focus_top = sorted(
-          [r for r in repos if r.get("is_focus")],
-          key=lambda r: r.get("hot_score", 0), reverse=True
-      )[:15]
+    new_stars_top = sorted(
+        [r for r in repos if any("new-stars" in s for s in r.get("sources", []))],
+        key=lambda r: r.get("stars", 0), reverse=True
+    )[:10]
+    focus_top = sorted(
+        [r for r in repos if r.get("is_focus")],
+        key=lambda r: r.get("hot_score", 0), reverse=True
+    )[:15]
       # 合并去重，三个区域的项目都覆盖
-      report_repos = {}
-      for r in trending_top + new_stars_top + focus_top:
-          report_repos[r["full_name"]] = r
+    report_repos = {}
+    for r in trending_top + new_stars_top + focus_top:
+        report_repos[r["full_name"]] = r
     readme_cache = {}
     for r in report_repos.values():
         readme = fetch_readme(r["owner"], r["name"])
