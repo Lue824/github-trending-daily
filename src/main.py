@@ -81,7 +81,7 @@ def run_daily():
         [r for r in repos if r.get("is_focus")],
         key=lambda r: r.get("hot_score", 0), reverse=True
     )[:15]
-      # 合并去重，三个区域的项目都覆盖
+    # 合并去重，三个区域的项目都覆盖
     report_repos = {}
     for r in trending_top + new_stars_top + focus_top:
         report_repos[r["full_name"]] = r
