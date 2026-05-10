@@ -32,6 +32,7 @@ jobs:
           QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
           QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python src/main.py
 
       - name: Commit daily reports
