@@ -67,32 +67,43 @@ def run_daily():
     logger.info("Step 4: Marking streaks...")
     repos = mark_consecutive_streak(repos, TODAY, YESTERDAY)
 
-    # 6. 为 TOP 项目抓取 README（用于深度介绍）
-    logger.info("Step 5: Fetching READMEs for top repos...")
-    top_repos = repos[:10]  # 热度排名前 10
+    # 6. 为报告各区域需要的项目抓取 README
+    logger.info("Step 5: Fetching READMEs for report repos...")
+    trending_top = sorted(
+        [r for r in repos if any("trending" in s for s in r.get("sources", []))],
+        key=lambda r: r.get("hot_score", 0), reverse=True
+    )[:10]
+    new_stars_top = sorted(
+        [r for r in repos if any("new-stars" in s for s in r.get("sources", []))],
+        key=lambda r: r.get("stars", 0), reverse=True
+    )[:10]
+    # 合并去重
+    report_repos = {}
+    for r in trending_top + new_stars_top:
+        report_repos[r["full_name"]] = r
     readme_cache = {}
-    for r in top_repos:
+    for r in report_repos.values():
         readme = fetch_readme(r["owner"], r["name"])
         if readme:
             readme_cache[r["full_name"]] = readme
-    logger.info(f"Fetched {len(readme_cache)} READMEs for top repos")
+    logger.info(f"Fetched {len(readme_cache)} READMEs for {len(report_repos)} report repos")
 
     # 7. 存储到数据库
     logger.info("Step 6: Saving to database...")
     save_daily_repos(repos, TODAY)
 
-    # 8. 可选：LLM 深度分析
+    # 8. 可选：LLM 深度分析（覆盖报告所有区域的项目）
     llm_analyses = {}
     trend_analysis = ""
     try:
         from src.processor.llm_summarize import summarize_project, analyze_trends
-        logger.info("Step 7: Running LLM deep analysis...")
-        for i, r in enumerate(top_repos[:10]):
-            readme = readme_cache.get(r["full_name"], "")
+        logger.info(f"Step 7: Running LLM deep analysis on {len(report_repos)} repos...")
+        for full_name, r in report_repos.items():
+            readme = readme_cache.get(full_name, "")
             if readme:
                 analysis = summarize_project(r, readme)
                 if analysis:
-                    llm_analyses[r["full_name"]] = analysis
+                    llm_analyses[full_name] = analysis
         if llm_analyses:
             trend_analysis = analyze_trends(repos, readme_cache) or ""
             logger.info(f"LLM analyzed {len(llm_analyses)} projects")

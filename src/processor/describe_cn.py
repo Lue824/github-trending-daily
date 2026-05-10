@@ -146,49 +146,50 @@ def _clean_english_desc(desc: str) -> str:
 
 def generate_cn_description(repo: dict) -> str:
     """
-    生成一句话中文介绍（用于列表、摘要中）
-
-    格式：领域标签 + 项目类型 + 英文简述（保留原文）
+    生成一句话中文介绍（纯中文，用于列表、摘要中）
+    从项目元数据综合生成，不夹杂英文原文
     """
     cn_topics = _pick_cn_topics(repo)
     name = repo.get("name", "").lower()
     language = repo.get("language", "Unknown")
     desc = repo.get("description", "").strip()
 
-    # 1. 项目类型推断
+    # 如果描述本身是中文，直接用
+    if desc and _is_mostly_chinese(desc):
+        return desc[:120]
+
+    # 项目类型推断
     type_hint = ""
     for pat, hint in _NAME_HINTS:
         if re.search(pat, name):
             type_hint = hint
             break
 
-    # 2. 构建中文部分
-    cn_parts = []
+    # 构建纯中文描述
+    parts = []
     if cn_topics:
-        cn_parts.append("、".join(cn_topics[:4]))
+        parts.append("、".join(cn_topics[:3]))
+
     if type_hint:
-        cn_parts.append(type_hint)
+        parts.append(type_hint)
+
     if language and language != "Unknown":
-        cn_parts.append(f"{language} 项目")
+        parts.append(f"使用{language}开发")
 
-    cn_main = "，".join(cn_parts) if cn_parts else f"GitHub 热门项目（{language}）"
+    if not parts:
+        return f"GitHub 热门开源项目（{language}）"
 
-    # 3. 附加原始描述（如果可读）
-    if desc:
-        clean = _clean_english_desc(desc)
-        if clean:
-            return f"【{cn_main}】{clean}"
-    return f"【{cn_main}】"
+    return "，".join(parts) + "。"
 
 
 def generate_cn_detail(repo: dict) -> str:
     """
-    生成详细中文介绍（2-3句，用于重点区域）
+    生成详细中文介绍（纯中文，2-3句，用于重点区域）
 
     结构：
-    1. 定位句：这是一个做什么的项目
-    2. 亮点句：为什么热门 / 有什么特点
-    3. 数据句：Star 增速等数据
+    1. 定位句：领域 + 项目类型 + 语言
+    2. 数据句：Star 数 + 热度说明
+    不夹杂英文原文描述
     """
     cn_topics = _pick_cn_topics(repo)
     name = repo.get("name", "").lower()
@@ -199,58 +200,53 @@ def generate_cn_detail(repo: dict) -> str:
     stars_today = repo.get("stars_in_period", 0) or 0
     tags = repo.get("tags", [])
 
+    # 项目类型推断
+    type_hint = ""
+    for pat, hint in _NAME_HINTS:
+        if re.search(pat, name):
+            type_hint = hint
+            break
+
     sentences = []
 
     # ── 第 1 句：项目定位 ───────────────────────────────
-    parts = []
-    if cn_topics:
-        parts.append(f"这是一个{'/'.join(cn_topics[:3])}领域的开源项目")
+    topic_str = "、".join(cn_topics[:3]) if cn_topics else ""
+    if topic_str:
+        first = f"这是一个{topic_str}领域的开源项目"
+        if type_hint:
+            first += f"，属于{type_hint}"
+    elif type_hint:
+        first = f"这是一个{type_hint}"
+    else:
+        first = f"这是一个GitHub热门开源项目"
 
-    # 从名称/描述推断功能
-    for pat, hint in _NAME_HINTS:
-        if re.search(pat, name):
-            if not parts:
-                parts.append(f"这是一个{hint}")
-            break
-
-    if desc and not _is_mostly_chinese(desc):
-        # 用英文描述作为补充说明
-        clean = _clean_english_desc(desc)
-        if clean and parts:
-            sentences.append(f"{parts[0]}。{clean}")
-            parts = []  # 已使用
-
-    if parts:
-        sentences.append(parts[0])
-
-    # ── 第 2 句：项目特点 ──────────────────────────────
     if language and language != "Unknown":
-        stars_str = f"{stars:,}"
-        sentences.append(f"该项目使用 {language} 开发，当前总星数 {stars_str}")
+        first += f"，使用 {language} 开发"
 
-    # ── 第 3 句：热度说明 ──────────────────────────────
+    # 如果描述是中文，附带简短说明
+    if desc and _is_mostly_chinese(desc):
+        first += f"，{desc[:80]}"
+
+    sentences.append(first + "。")
+
+    # ── 第 2 句：数据 + 热度 ──────────────────────────────
+    data_part = f"当前总星数 {stars:,}"
     if tags:
         tag_str = "、".join(tags)
-        if "大模型/AI" in tags:
-            if stars_today > 5000:
-                sentences.append(f"作为{tag_str}方向的明星项目，今日新增 {stars_today:,} 星，增速惊人")
-            elif stars_today > 1000:
-                sentences.append(f"属于{tag_str}方向的热门项目，今日新增 {stars_today:,} 星")
-
-    if len(sentences) == 1:
-        # 补齐：如果没有特征句
         if stars_today > 5000:
-            sentences.append(f"今日新增 {stars_today:,} Star，是当前 GitHub 热度最高的项目之一")
+            data_part += f"，作为{tag_str}方向的明星项目，今日新增 {stars_today:,} 星，增速惊人"
         elif stars_today > 1000:
-            sentences.append(f"今日新增 {stars_today:,} Star，关注度持续攀升")
+            data_part += f"，属于{tag_str}方向的热门项目，今日新增 {stars_today:,} 星"
+        else:
+            data_part += f"，属于{tag_str}方向"
+    elif stars_today > 5000:
+        data_part += f"，今日新增 {stars_today:,} 星，是当前 GitHub 热度最高的项目之一"
+    elif stars_today > 1000:
+        data_part += f"，今日新增 {stars_today:,} 星，关注度持续攀升"
 
-    # 如果还是只有一句，用描述补齐
-    if len(sentences) == 1 and desc:
-        clean = _clean_english_desc(desc)
-        if clean and clean not in sentences[0]:
-            sentences.append(clean)
+    sentences.append(data_part + "。")
 
-    return "。".join(sentences) + "。"
+    return "".join(sentences)
 
 
 def _ecosystem_hint(topics: list[str]) -> str:
@@ -281,9 +277,9 @@ def _ecosystem_hint(topics: list[str]) -> str:
 
 def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
     """
-    结合 README 内容生成深度中文项目介绍
+    结合元数据生成中文项目介绍（纯中文，LLM 不可用时的备选方案）
 
-    Returns 结构化介绍：项目定位 + 功能介绍 + 用途场景 + 热度
+    Returns 结构化介绍：项目定位 + 适用场景 + 技术栈 + 热度
     """
     cn_topics = _pick_cn_topics(repo)
     name = repo.get("name", "").lower()
@@ -295,55 +291,56 @@ def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
     tags = repo.get("tags", [])
     ecosystem = _ecosystem_hint(repo.get("topics", []))
 
+    # 项目类型
+    type_hint = ""
+    for pat, hint in _NAME_HINTS:
+        if re.search(pat, name):
+            type_hint = hint
+            break
+
     sections = []
 
-    # ═══════════════════════════════════════════════════════
     # 1. 项目定位
-    # ═══════════════════════════════════════════════════════
     topic_str = "、".join(cn_topics[:3]) if cn_topics else "通用"
-    sections.append(f"**📌 项目定位**：{full_name} 是一个{topic_str}领域的开源项目")
+    loc = f"**📌 项目定位**：{full_name} 是一个{topic_str}领域的开源项目"
+    if type_hint:
+        loc += f"，属于{type_hint}"
+    loc += "。"
+    sections.append(loc)
 
-    # ═══════════════════════════════════════════════════════
-    # 2. 核心功能（从 README 提取）
-    # ═══════════════════════════════════════════════════════
-    if readme_text:
-        # 从 README 提取第一段有意义的内容作为功能介绍
-        intro_text = _extract_readme_intro(readme_text)
-        if intro_text:
-            sections.append(f"**💡 功能介绍**：{intro_text}")
+    # 2. 项目简介（用描述或话题推断）
+    if desc and _is_mostly_chinese(desc):
+        sections.append(f"**💡 项目简介**：{desc[:150]}。")
+    elif desc:
+        # 英文描述：提取关键信息，用中文说明
+        short = _clean_english_desc(desc)
+        if short:
+            sections.append(f"**💡 项目简介**：该项目主要涉及{f'，'.join(cn_topics[:5]) if cn_topics else topic_str}相关内容。")
+    else:
+        if cn_topics:
+            sections.append(f"**💡 项目简介**：该项目聚焦于{'、'.join(cn_topics[:5])}等方向。")
 
-    if not readme_text and desc:
-        clean = _clean_english_desc(desc)
-        if clean:
-            sections.append(f"**💡 项目简介**：{clean}")
-
-    # ═══════════════════════════════════════════════════════
     # 3. 用途/场景
-    # ═══════════════════════════════════════════════════════
     use_cases = _infer_use_cases(repo, readme_text)
     if use_cases:
-        sections.append(f"**🎯 适用场景**：{use_cases}")
+        sections.append(f"**🎯 适用场景**：{use_cases}。")
 
-    # ═══════════════════════════════════════════════════════
     # 4. 技术栈
-    # ═══════════════════════════════════════════════════════
     tech_parts = [f"使用 **{language}** 开发"]
     if ecosystem:
         tech_parts.append(f"属于 **{ecosystem}** 生态")
     tech_parts.append(f"当前总星数 **{stars:,}**")
-    sections.append(f"**🛠️ 技术栈**：{'，'.join(tech_parts)}")
+    sections.append(f"**🛠️ 技术栈**：{'，'.join(tech_parts)}。")
 
-    # ═══════════════════════════════════════════════════════
     # 5. 热度
-    # ═══════════════════════════════════════════════════════
     if stars_today > 5000:
         sections.append(
             f"**📈 今日热度**：新增 **{stars_today:,}** Star，增速极其迅猛，"
-            f"是当前 GitHub 最受关注的项目之一"
+            f"是当前 GitHub 最受关注的项目之一。"
         )
     elif stars_today > 1000:
         sections.append(
-            f"**📈 今日热度**：新增 **{stars_today:,}** Star，热度持续攀升"
+            f"**📈 今日热度**：新增 **{stars_today:,}** Star，热度持续攀升。"
         )
 
     return "\n\n".join(sections)
@@ -451,8 +448,8 @@ def _infer_use_cases(repo: dict, readme: str = "") -> str:
     if any(k in topics for k in ("browser", "playwright", "puppeteer", "selenium")):
         cases.append("浏览器自动化和网页操作")
 
-    # 文档/签名 (排除 "document index" 等非签署场景)
-    if any(k in desc for k in ("esign", "esignature", "docusign", "sign document", "digital sign", "fill sign")):
+    # 文档/签名 (使用更精确的匹配，避免 "esign" 误匹配 "design")
+    if any(k in desc for k in ("docusign", "e-sign", "esignature", "digital signature", "document signing", "fill and sign")):
         cases.append("电子文档签署和管理")
 
     # RAG

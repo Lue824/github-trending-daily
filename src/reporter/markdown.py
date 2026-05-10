@@ -127,14 +127,27 @@ def generate_daily_report(
 
     if new_stars:
         for i, r in enumerate(new_stars, 1):
-            cn_desc = generate_cn_description(r)
             stars_total = r.get("stars", 0)
             language = r.get("language", "Unknown")
+
+            # 优先用 LLM 分析，其次用 README 深度介绍，最后用基础中文描述
+            llm_analysis = llm_analyses.get(r["full_name"], "")
+            if llm_analysis:
+                cn_desc = llm_analysis
+            else:
+                readme = readme_cache.get(r["full_name"], "")
+                if readme:
+                    cn_desc = generate_cn_intro_with_readme(r, readme)
+                else:
+                    cn_desc = generate_cn_description(r)
 
             lines.append(f"### {i}. [{r['full_name']}]({r['url']})")
             lines.append(f"**{r['owner']}/{r['name']}** — {language} &nbsp;|&nbsp; ⭐ **{stars_total:,}**")
             lines.append("")
-            lines.append(f"> {cn_desc}")
+            if llm_analysis:
+                lines.append(cn_desc)
+            else:
+                lines.append(f"> {cn_desc}")
             lines.append("")
     else:
         lines.append("> ⚠️ 本次未获取到新星项目数据")
@@ -158,15 +171,25 @@ def generate_daily_report(
             streak = _streak_icon(r)
             tags = r.get("tags", [])
             tags_str = " · ".join(tags) if tags else ""
-            cn_desc = generate_cn_detail(r)
             stars_total = r.get("stars", 0)
             stars_today = r.get("stars_in_period", 0) or 0
             language = r.get("language", "Unknown")
 
+            # 优先用 LLM 分析，其次用 README 深度介绍，最后用基础中文描述
+            llm_analysis = llm_analyses.get(r["full_name"], "")
+            if llm_analysis:
+                cn_desc = llm_analysis
+            else:
+                readme = readme_cache.get(r["full_name"], "")
+                if readme:
+                    cn_desc = generate_cn_intro_with_readme(r, readme)
+                else:
+                    cn_desc = generate_cn_detail(r)
+
             lines.append(f"### {i}. [{r['full_name']}]({r['url']}) {streak}")
             lines.append(f"**领域：{tags_str}** &nbsp;|&nbsp; {language} &nbsp;|&nbsp; ⭐ **{stars_total:,}**")
             lines.append("")
-            lines.append(f"> {cn_desc}")
+            lines.append(cn_desc)
             if stars_today:
                 lines.append(f"<br>📈 今日新增 **+{stars_today:,}** Stars")
             lines.append("")
