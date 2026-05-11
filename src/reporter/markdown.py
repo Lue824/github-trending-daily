@@ -15,14 +15,48 @@ def _streak_icon(repo: dict) -> str:
         return "🔥🔥"
     if days >= 3:
         return "🔥"
-    if repo.get("on_list_yesterday"):
-        return "📌"
     return ""
+
+
+def _rank_badge(repo: dict, section: str, today_rank: int,
+                yesterday_ranks: dict) -> str:
+    """生成排名变化标注"""
+    if not repo.get("on_list_yesterday"):
+        return "🆕 新上榜"
+
+    badge = "📌 昨日也上榜"
+    if yesterday_ranks:
+        section_ranks = yesterday_ranks.get(repo["full_name"], {})
+        yesterday_rank = section_ranks.get(section)
+        if yesterday_rank is not None:
+            diff = yesterday_rank - today_rank
+            if diff > 0:
+                badge += f"（↑{diff}）"
+            elif diff < 0:
+                badge += f"（↓{abs(diff)}）"
+            else:
+                badge += "（-）"
+    return badge
 
 
 def _tags_cn(repo: dict) -> str:
     tags = repo.get("tags", [])
     return " · ".join(f"`{t}`" for t in tags) if tags else ""
+
+
+def _section_anchor_id(section: str, rank: int) -> str:
+    """生成报告内跳转锚点 ID"""
+    prefixes = {"trending": "t", "new_stars": "n", "focus": "f"}
+    return f"{prefixes.get(section, 'x')}-r{rank}"
+
+
+def _yesterday_jump_url(section: str, yesterday_rank: int, yesterday_date: str) -> str:
+    """生成跳转到昨日报告中对应项目的 GitHub URL"""
+    anchor = _section_anchor_id(section, yesterday_rank)
+    return (
+        f"https://github.com/Lue824/github-trending-daily/blob/master"
+        f"/data/reports/daily-{yesterday_date}.md#{anchor}"
+    )
 
 
 def generate_daily_report(
@@ -31,6 +65,8 @@ def generate_daily_report(
     readme_cache: dict = None,
     llm_analyses: dict = None,
     trend_analysis: str = "",
+    yesterday_ranks: dict = None,
+    yesterday_date: str = "",
 ) -> str:
     now = datetime.strptime(date_str, "%Y-%m-%d")
     date_display = now.strftime("%Y年%m月%d日")
@@ -40,20 +76,38 @@ def generate_daily_report(
     )
     readme_cache = readme_cache or {}
     llm_analyses = llm_analyses or {}
+    yesterday_ranks = yesterday_ranks or {}
 
     # ── 数据分组 ──────────────────────────────────────────
-    trending = sorted(
+    trending_sorted = sorted(
         [r for r in repos if any("trending" in s for s in r.get("sources", []))],
         key=lambda r: r.get("hot_score", 0), reverse=True
-    )[:15]
-    new_stars = sorted(
+    )
+    new_stars_sorted = sorted(
         [r for r in repos if any("new-stars" in s for s in r.get("sources", []))],
         key=lambda r: r.get("stars", 0), reverse=True
-    )[:10]
-    focus_all = sorted(
+    )
+    focus_sorted = sorted(
         [r for r in repos if r.get("is_focus")],
         key=lambda r: r.get("hot_score", 0), reverse=True
-    )[:15]
+    )
+
+    # 统计各区域昨日在榜重复数，确定实际展示数量
+    def _section_dup_info(section_repos, top_n, yr, section_key):
+        dup_map = {}
+        for r in section_repos[:top_n]:
+            sections = yr.get(r["full_name"], {})
+            if section_key in sections:
+                dup_map[r["full_name"]] = sections[section_key]
+        return dup_map
+
+    trending_dups = _section_dup_info(trending_sorted, 10, yesterday_ranks, "trending")
+    new_stars_dups = _section_dup_info(new_stars_sorted, 10, yesterday_ranks, "new_stars")
+    focus_dups = _section_dup_info(focus_sorted, 15, yesterday_ranks, "focus")
+
+    trending = trending_sorted[:10 + len(trending_dups)]
+    new_stars = new_stars_sorted[:10 + len(new_stars_dups)]
+    focus_all = focus_sorted[:15 + len(focus_dups)]
 
     lang_counter = Counter(r.get("language", "Unknown") for r in repos)
     top_langs = lang_counter.most_common(8)
@@ -74,18 +128,35 @@ def generate_daily_report(
     lines.append("")
 
     # ════════════════════════════════════════════════════════
-    # 第 1 部分：今日 Trending TOP 10（详细中文介绍）
+    # 第 1 部分：今日 Trending TOP N（详细中文介绍）
     # ════════════════════════════════════════════════════════
-    lines.append("## 🔥 今日 Trending 榜单 TOP 10")
+    trending_display_n = len(trending)
+    lines.append(f"## 🔥 今日 Trending 榜单 TOP {trending_display_n}")
     lines.append("")
-    lines.append("> 以下为 GitHub Trending 今日综合热度最高的 10 个项目，按 Star 增速和综合影响力排序。")
+    dup_info = f"（含 {len(trending_dups)} 个昨日在榜项目，已精简展示）" if trending_dups else ""
+    lines.append(
+        f"> 以下为 GitHub Trending 今日综合热度最高的 {trending_display_n} 个项目"
+        f"{dup_info}，按 Star 增速和综合影响力排序。"
+    )
     lines.append("")
 
-    for i, r in enumerate(trending[:10], 1):
+    for i, r in enumerate(trending, 1):
         streak = _streak_icon(r)
-        tags_cn = _tags_cn(r)
+        rank_badge = _rank_badge(r, "trending", i, yesterday_ranks)
+        anchor = _section_anchor_id("trending", i)
+        is_dup = r["full_name"] in trending_dups
 
-        # 优先用 LLM 深度分析，其次 README，最后基础介绍
+        lines.append(f'<a id="{anchor}"></a>')
+        lines.append(f"### {i}. [{r['full_name']}]({r['url']}) {streak} {rank_badge}")
+
+        if is_dup:
+            yesterday_rank = trending_dups[r["full_name"]]
+            jump_url = _yesterday_jump_url("trending", yesterday_rank, yesterday_date)
+            lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名 （如未自动定位请手动查找）")
+            lines.append("")
+            continue
+
+        tags_cn = _tags_cn(r)
         llm_analysis = llm_analyses.get(r["full_name"], "")
         if llm_analysis:
             cn_desc = llm_analysis
@@ -101,7 +172,6 @@ def generate_daily_report(
         forks = r.get("forks", 0)
         language = r.get("language", "Unknown")
 
-        lines.append(f"### {i}. [{r['full_name']}]({r['url']}) {streak}")
         lines.append(f"**{r['owner']}/{r['name']}** — {language}")
         lines.append("")
         lines.append(cn_desc)
@@ -122,15 +192,32 @@ def generate_daily_report(
     lines.append("")
     lines.append("## ⭐ 本月新星项目（30天内创建）")
     lines.append("")
-    lines.append("> 这些是近 30 天内新发布就迅速获得大量关注的项目，代表了最新的技术趋势。")
+    dup_info_ns = f"（含 {len(new_stars_dups)} 个昨日在榜，已精简）" if new_stars_dups else ""
+    lines.append(
+        f"> 这些是近 30 天内新发布就迅速获得大量关注的项目"
+        f"{dup_info_ns}，代表了最新的技术趋势。"
+    )
     lines.append("")
 
     if new_stars:
         for i, r in enumerate(new_stars, 1):
+            rank_badge = _rank_badge(r, "new_stars", i, yesterday_ranks)
+            anchor = _section_anchor_id("new_stars", i)
+            is_dup = r["full_name"] in new_stars_dups
+
+            lines.append(f'<a id="{anchor}"></a>')
+            lines.append(f"### {i}. [{r['full_name']}]({r['url']}) {rank_badge}")
+
+            if is_dup:
+                yesterday_rank = new_stars_dups[r["full_name"]]
+                jump_url = _yesterday_jump_url("new_stars", yesterday_rank, yesterday_date)
+                lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名 （如未自动定位请手动查找）")
+                lines.append("")
+                continue
+
             stars_total = r.get("stars", 0)
             language = r.get("language", "Unknown")
 
-            # 优先用 LLM 分析，其次用 README 深度介绍，最后用基础中文描述
             llm_analysis = llm_analyses.get(r["full_name"], "")
             if llm_analysis:
                 cn_desc = llm_analysis
@@ -141,7 +228,6 @@ def generate_daily_report(
                 else:
                     cn_desc = generate_cn_description(r)
 
-            lines.append(f"### {i}. [{r['full_name']}]({r['url']})")
             lines.append(f"**{r['owner']}/{r['name']}** — {language} &nbsp;|&nbsp; ⭐ **{stars_total:,}**")
             lines.append("")
             if llm_analysis:
@@ -160,8 +246,9 @@ def generate_daily_report(
     lines.append("")
     lines.append("## 🤖 AI / 机器学习 / 具身智能 重点关注")
     lines.append("")
+    dup_info_f = f"（含 {len(focus_dups)} 个昨日在榜，已精简）" if focus_dups else ""
     lines.append(
-        "> 以下是从所有收录项目中筛选出的 AI 相关热门项目，"
+        f"> 以下是从所有收录项目中筛选出的 AI 相关热门项目{dup_info_f}，"
         "涵盖**大模型/AI Agent**、**机器学习**、**深度学习**、**具身智能/机器人**四大领域。"
     )
     lines.append("")
@@ -169,13 +256,26 @@ def generate_daily_report(
     if focus_all:
         for i, r in enumerate(focus_all, 1):
             streak = _streak_icon(r)
+            rank_badge = _rank_badge(r, "focus", i, yesterday_ranks)
+            anchor = _section_anchor_id("focus", i)
+            is_dup = r["full_name"] in focus_dups
+
+            lines.append(f'<a id="{anchor}"></a>')
+            lines.append(f"### {i}. [{r['full_name']}]({r['url']}) {streak} {rank_badge}")
+
+            if is_dup:
+                yesterday_rank = focus_dups[r["full_name"]]
+                jump_url = _yesterday_jump_url("focus", yesterday_rank, yesterday_date)
+                lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名 （如未自动定位请手动查找）")
+                lines.append("")
+                continue
+
             tags = r.get("tags", [])
             tags_str = " · ".join(tags) if tags else ""
             stars_total = r.get("stars", 0)
             stars_today = r.get("stars_in_period", 0) or 0
             language = r.get("language", "Unknown")
 
-            # 优先用 LLM 分析，其次用 README 深度介绍，最后用基础中文描述
             llm_analysis = llm_analyses.get(r["full_name"], "")
             if llm_analysis:
                 cn_desc = llm_analysis
@@ -186,7 +286,6 @@ def generate_daily_report(
                 else:
                     cn_desc = generate_cn_detail(r)
 
-            lines.append(f"### {i}. [{r['full_name']}]({r['url']}) {streak}")
             lines.append(f"**领域：{tags_str}** &nbsp;|&nbsp; {language} &nbsp;|&nbsp; ⭐ **{stars_total:,}**")
             lines.append("")
             lines.append(cn_desc)
@@ -242,7 +341,8 @@ def generate_daily_report(
         lines.append("| 🔥🔥🔥 | 连续 7 天以上在榜 |")
         lines.append("| 🔥🔥 | 连续 5-6 天在榜 |")
         lines.append("| 🔥 | 连续 3-4 天在榜 |")
-        lines.append("| 📌 | 昨日也在榜 |")
+        lines.append("| 🆕 新上榜 | 今日首次入榜 |")
+        lines.append("| 📌 昨日也上榜（↑N/↓N/-） | 昨日同区域在榜，排名升降 |")
     else:
         lines.append("> 暂无连续在榜项目（今天是首次运行，连续标记从明天开始出现）")
     lines.append("")

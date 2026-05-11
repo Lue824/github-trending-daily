@@ -17,6 +17,7 @@ from src.processor.categorize import classify_repos, sort_by_hotness, compute_ho
 from src.storage.db import (
     init_db, save_daily_repos, save_daily_summary,
     mark_consecutive_streak, cleanup_old_data, get_monthly_stats,
+    get_yesterday_section_ranks,
 )
 from src.reporter.markdown import (
     generate_daily_report, generate_monthly_report, save_report,
@@ -67,20 +68,42 @@ def run_daily():
     logger.info("Step 4: Marking streaks...")
     repos = mark_consecutive_streak(repos, TODAY, YESTERDAY)
 
-    # 6. 为报告各区域需要的项目抓取 README
+    # 5b. 获取昨日各区域排名
+    yesterday_ranks = get_yesterday_section_ranks(YESTERDAY)
+    logger.info(f"Yesterday rankings: {len(yesterday_ranks)} repos")
+
+    # 6. 为报告各区域需要的项目抓取 README（含昨日重复项目的替补）
     logger.info("Step 5: Fetching READMEs for report repos...")
-    trending_top = sorted(
+    trending_sorted = sorted(
         [r for r in repos if any("trending" in s for s in r.get("sources", []))],
         key=lambda r: r.get("hot_score", 0), reverse=True
-    )[:10]
-    new_stars_top = sorted(
+    )
+    new_stars_sorted = sorted(
         [r for r in repos if any("new-stars" in s for s in r.get("sources", []))],
         key=lambda r: r.get("stars", 0), reverse=True
-    )[:10]
-    focus_top = sorted(
+    )
+    focus_sorted = sorted(
         [r for r in repos if r.get("is_focus")],
         key=lambda r: r.get("hot_score", 0), reverse=True
-    )[:15]
+    )
+
+    def _count_dups(section_repos, top_n, yr, section_key):
+        cnt = 0
+        for r in section_repos[:top_n]:
+            if section_key in yr.get(r["full_name"], {}):
+                cnt += 1
+        return cnt
+
+    trending_dup = _count_dups(trending_sorted, 10, yesterday_ranks, "trending")
+    new_stars_dup = _count_dups(new_stars_sorted, 10, yesterday_ranks, "new_stars")
+    focus_dup = _count_dups(focus_sorted, 15, yesterday_ranks, "focus")
+    logger.info(f"Section dups: trending={trending_dup}, new_stars={new_stars_dup}, focus={focus_dup}")
+
+    trending_top = trending_sorted[:10 + trending_dup]
+    new_stars_top = new_stars_sorted[:10 + new_stars_dup]
+    focus_top = focus_sorted[:15 + focus_dup]
+    logger.info(f"Display counts: trending={len(trending_top)}, new_stars={len(new_stars_top)}, focus={len(focus_top)}")
+
     # 合并去重，三个区域的项目都覆盖
     report_repos = {}
     for r in trending_top + new_stars_top + focus_top:
@@ -125,7 +148,10 @@ def run_daily():
 
     # 9. 生成 Markdown 日报
     logger.info("Step 8: Generating daily report...")
-    md_content = generate_daily_report(repos, TODAY, readme_cache, llm_analyses, trend_analysis)
+    md_content = generate_daily_report(
+        repos, TODAY, readme_cache, llm_analyses, trend_analysis,
+        yesterday_ranks, YESTERDAY,
+    )
     daily_filename = f"daily-{TODAY}.md"
     report_path = save_report(md_content, daily_filename)
     logger.info(f"Daily report saved: {report_path}")

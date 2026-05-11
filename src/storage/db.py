@@ -177,6 +177,64 @@ def mark_consecutive_streak(repos: list[dict], today: str, yesterday: str) -> li
     return repos
 
 
+def get_yesterday_section_ranks(yesterday: str) -> dict:
+    """获取昨天各区域的排名数据
+
+    重建与 generate_daily_report() 相同的 3 个排名区域，
+    返回 {full_name: {section_key: rank}} 映射。
+
+    Args:
+        yesterday: YYYY-MM-DD 格式的日期字符串
+
+    Returns:
+        dict keyed by full_name, each value is a dict mapping
+        section keys ("trending"/"new_stars"/"focus") to 1-indexed ranks.
+        Only repos that made the top-N cut in each section are included.
+        Returns empty dict if no data for yesterday.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT full_name, hot_score, stars, sources, is_focus "
+            "FROM daily_repos WHERE fetch_date = ?",
+            (yesterday,)
+        ).fetchall()
+
+    if not rows:
+        return {}
+
+    repos = []
+    for r in rows:
+        d = dict(r)
+        d["sources"] = json.loads(d.get("sources", "[]"))
+        d["is_focus"] = bool(d.get("is_focus", 0))
+        repos.append(d)
+
+    trending = sorted(
+        [r for r in repos if any("trending" in s for s in r["sources"])],
+        key=lambda r: r["hot_score"], reverse=True
+    )[:10]
+
+    new_stars = sorted(
+        [r for r in repos if any("new-stars" in s for s in r["sources"])],
+        key=lambda r: r["stars"], reverse=True
+    )[:10]
+
+    focus = sorted(
+        [r for r in repos if r["is_focus"]],
+        key=lambda r: r["hot_score"], reverse=True
+    )[:15]
+
+    result: dict = {}
+    for rank, r in enumerate(trending, 1):
+        result.setdefault(r["full_name"], {})["trending"] = rank
+    for rank, r in enumerate(new_stars, 1):
+        result.setdefault(r["full_name"], {})["new_stars"] = rank
+    for rank, r in enumerate(focus, 1):
+        result.setdefault(r["full_name"], {})["focus"] = rank
+
+    return result
+
+
 def cleanup_old_data():
     """删除超过保留期限的数据"""
     cutoff = (datetime.utcnow() - timedelta(days=DATA_RETENTION_DAYS)).strftime("%Y-%m-%d")

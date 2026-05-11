@@ -4,5 +4,4 @@ __pycache__/
 .claude/
 data/raw/
 data/readmes/
-data/trending.db
 .DS_Store
