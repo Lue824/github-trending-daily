@@ -1,6 +1,7 @@
 """Markdown 日报生成（中文介绍版）"""
 import json
 import os
+import re
 from collections import Counter
 from datetime import datetime
 
@@ -50,13 +51,35 @@ def _section_anchor_id(section: str, rank: int) -> str:
     return f"{prefixes.get(section, 'x')}-r{rank}"
 
 
-def _yesterday_jump_url(section: str, yesterday_rank: int, yesterday_date: str) -> str:
-    """生成跳转到昨日报告中对应项目的 GitHub URL"""
-    anchor = _section_anchor_id(section, yesterday_rank)
-    return (
-        f"https://github.com/Lue824/github-trending-daily/blob/master"
-        f"/data/reports/daily-{yesterday_date}.md#{anchor}"
+def _yesterday_jump_url(yesterday_date: str, section: str = "", rank: int = 0) -> str:
+    """生成跳转到昨日报告的 URL（仓库为私有，需用 github.com/blob 链接）"""
+    base = (
+        f"https://github.com/Lue824/github-trending-daily"
+        f"/blob/master/data/reports/daily-{yesterday_date}.md"
     )
+    if section and rank:
+        anchor = _section_anchor_id(section, rank)
+        return f"{base}#{anchor}"
+    return base
+
+
+def _brief_one_liner(repo: dict, llm_analyses: dict) -> str:
+    """从 LLM 分析中提取一句话要点摘要"""
+    llm = llm_analyses.get(repo["full_name"], "")
+    if llm:
+        # 去掉 LLM 开场白
+        llm = re.sub(r'好的[,，].*?介绍\s*', '', llm)
+        # 提取「📌 它是什么」段落的第一句话
+        for line in llm.replace("\n", " ").split("。"):
+            line = line.strip()
+            if line and len(line) > 10:
+                line = line.replace("**", "").replace("📌 它是什么", "").replace("：", "").replace(":", "").strip()
+                if len(line) > 15:
+                    return f"💡 {line}。"
+                break
+    from src.processor.describe_cn import generate_cn_description
+    desc = generate_cn_description(repo)
+    return f"💡 {desc}"
 
 
 def generate_daily_report(
@@ -151,8 +174,10 @@ def generate_daily_report(
 
         if is_dup:
             yesterday_rank = trending_dups[r["full_name"]]
-            jump_url = _yesterday_jump_url("trending", yesterday_rank, yesterday_date)
-            lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名 （如未自动定位请手动查找）")
+            jump_url = _yesterday_jump_url(yesterday_date, "trending", yesterday_rank)
+            brief = _brief_one_liner(r, llm_analyses)
+            lines.append(f"> {brief}")
+            lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名")
             lines.append("")
             continue
 
@@ -210,8 +235,10 @@ def generate_daily_report(
 
             if is_dup:
                 yesterday_rank = new_stars_dups[r["full_name"]]
-                jump_url = _yesterday_jump_url("new_stars", yesterday_rank, yesterday_date)
-                lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名 （如未自动定位请手动查找）")
+                jump_url = _yesterday_jump_url(yesterday_date, "new_stars", yesterday_rank)
+                brief = _brief_one_liner(r, llm_analyses)
+                lines.append(f"> {brief}")
+                lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名")
                 lines.append("")
                 continue
 
@@ -265,8 +292,10 @@ def generate_daily_report(
 
             if is_dup:
                 yesterday_rank = focus_dups[r["full_name"]]
-                jump_url = _yesterday_jump_url("focus", yesterday_rank, yesterday_date)
-                lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名 （如未自动定位请手动查找）")
+                jump_url = _yesterday_jump_url(yesterday_date, "focus", yesterday_rank)
+                brief = _brief_one_liner(r, llm_analyses)
+                lines.append(f"> {brief}")
+                lines.append(f"> 📎 [查看昨日详细介绍]({jump_url}) — 昨日第 {yesterday_rank} 名 · 今日第 {i} 名")
                 lines.append("")
                 continue
 
