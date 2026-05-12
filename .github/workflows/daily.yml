@@ -2,8 +2,8 @@ name: GitHub Trending Daily Report
 
 on:
   schedule:
-    # 每天北京时间 09:00 (UTC 01:00) 运行
-    - cron: "0 1 * * *"
+    # 每天北京时间 07:00 (UTC 23:00) 运行，避开 UTC 午夜高峰
+    - cron: "0 23 * * *"
   workflow_dispatch:  # 允许手动触发
 
 permissions:
