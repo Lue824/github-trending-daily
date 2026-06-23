@@ -43,11 +43,25 @@ def _get_extra(repo: dict) -> dict:
     return repo.get("_extra", {}) or {}
 
 
-def _gen_dimensions(repo: dict) -> list[dict]:
+def _gen_cn_intro(repo: dict) -> str:
+    """调用 LLM 生成中文介绍（与基础模块一致）"""
+    try:
+        from src.processor.describe_cn import generate_cn_detail, generate_cn_intro_with_readme
+        # 优先用 LLM 生成
+        readme = repo.get("_readme", "")
+        if readme:
+            return generate_cn_intro_with_readme(repo, readme)
+        return generate_cn_detail(repo)
+    except Exception as e:
+        logger.warning(f"CN intro generation failed: {e}")
+        return (repo.get("description", "") or "")[:200]
+
+
+def _gen_dimensions(repo: dict, cn_intro: str = "") -> list[dict]:
     """生成多维度解读卡片数据
 
     5 个维度（与基础日报对齐）：
-    - 它是什么：项目定位
+    - 它是什么：项目定位（用 LLM 中文介绍）
     - 谁在用：目标用户
     - 解决什么问题：核心价值
     - 怎么用：上手方式
@@ -68,10 +82,15 @@ def _gen_dimensions(repo: dict) -> list[dict]:
     created_days = extra.get("created_days", 0)
     updated_days = extra.get("updated_days", 0)
 
-    # 维度1：它是什么
-    what_is = desc if desc else f"{name} 是一个 {lang} 开源项目"
-    if len(what_is) > 150:
-        what_is = what_is[:147] + "..."
+    # 维度1：它是什么（优先用 LLM 中文介绍）
+    if cn_intro:
+        what_is = cn_intro
+    elif desc:
+        what_is = desc
+    else:
+        what_is = f"{name} 是一个 {lang} 开源项目"
+    if len(what_is) > 200:
+        what_is = what_is[:197] + "..."
 
     # 维度2：谁在用（基于 topics 和语言推断）
     audience_hints = {
@@ -154,15 +173,16 @@ def _gen_dimensions(repo: dict) -> list[dict]:
 
 
 def _card(repo: dict, idx: int) -> str:
-    """生成项目卡片（含多维度解读 + 来源标注）"""
+    """生成项目卡片（与基础模块风格统一 + 多维度解读 + 来源标注）"""
     stars = repo.get("stars", 0)
     inc = repo.get("stars_in_period", 0) or 0
+    forks = repo.get("forks", 0)
     lang = repo.get("language", "Unknown")
-    desc = (repo.get("description", "") or "")[:200]
-    tags = " · ".join(f'<span class="eco-tag">{t}</span>' for t in repo.get("tags", [])[:3])
     extra = _get_extra(repo)
     quality = repo.get("quality_score", 0)
     hot = repo.get("hot_score", 0)
+    burst = repo.get("burst_score", 0)
+    ai_score = repo.get("ai_radar_score", 0)
     source_note = repo.get("_source_note", "")
 
     # 来源标注横幅
@@ -180,58 +200,84 @@ def _card(repo: dict, idx: int) -> str:
             '</div>'
         )
 
+    # 调用 LLM 生成中文介绍（与基础模块一致）
+    cn_intro = _gen_cn_intro(repo)
+
     # 多维度解读
-    dims = _gen_dimensions(repo)
+    dims = _gen_dimensions(repo, cn_intro)
     dims_html = "".join(
-        f'<div class="dim-item"><span class="dim-icon">{d["icon"]}</span>'
-        f'<span class="dim-label">{d["label"]}</span>'
-        f'<span class="dim-text">{d["text"]}</span></div>'
+        '<div class="dim-item"><span class="dim-icon">' + d["icon"] + '</span>'
+        '<span class="dim-label">' + d["label"] + '</span>'
+        '<span class="dim-text">' + d["text"] + '</span></div>'
         for d in dims
     )
 
-    # 评分徽章
-    score_badge = ""
-    if quality or hot:
-        badge_parts = []
-        if quality:
-            badge_parts.append('<span class="badge badge-quality">🏆 质量 ' + str(quality) + '</span>')
-        if hot:
-            badge_parts.append('<span class="badge badge-hot">🔥 热度 ' + str(hot) + '</span>')
-        score_badge = '<div class="score-badges">' + "".join(badge_parts) + '</div>'
-
-    # 健康度指标
-    health_metrics = []
-    if extra.get("contributors"):
-        health_metrics.append(f"👥 {extra['contributors']}")
-    if extra.get("releases"):
-        health_metrics.append(f"🏷 {extra['releases']}")
-    if extra.get("open_prs") is not None:
-        health_metrics.append(f"🔀 {extra['open_prs']}")
-    if extra.get("open_issues") is not None:
-        health_metrics.append(f"⚠️ {extra['open_issues']}")
-    health_html = (
-        f'<div class="health-bar">{" · ".join(health_metrics)}</div>'
-        if health_metrics else ""
+    # 评分徽章（与基础模块一致）
+    scores = []
+    if burst and burst > 0:
+        scores.append('🧨 爆发 ' + format(burst, '.2f'))
+    if quality and quality > 0.4:
+        scores.append('🏆 质量 ' + format(quality, '.2f'))
+    if ai_score and ai_score > 0:
+        scores.append('🤖 AI ' + format(ai_score, '.2f'))
+    scores_html = (
+        '<div class="repo-scores">' + " · ".join(scores) + '</div>'
+        if scores else ""
     )
 
-    return f"""<div class="repo-card custom-card">
-{source_banner}
+    # 健康度指标（与基础模块一致）
+    health_items = []
+    if extra.get("contributors"):
+        health_items.append('👥 ' + str(extra["contributors"]))
+    if extra.get("open_issues"):
+        health_items.append('🐛 ' + str(extra["open_issues"]) + ' issues')
+    if extra.get("open_prs"):
+        health_items.append('🔀 ' + str(extra["open_prs"]) + ' PRs')
+    if extra.get("releases"):
+        health_items.append('🏷 ' + str(extra["releases"]) + ' releases')
+    last_push = extra.get("last_push_days", 999)
+    if last_push <= 7:
+        health_items.append('🟢 活跃')
+    elif last_push <= 90:
+        health_items.append('🟡 较活跃')
+    elif last_push > 180:
+        health_items.append('🔴 低活跃')
+    health_html = (
+        '<span class="health-meta">' + " · ".join(health_items) + '</span>'
+        if health_items else ""
+    )
+
+    # 标签
+    tags = repo.get("tags", []) or []
+    tags_html = (
+        '<div class="repo-tags">' + " · ".join(
+            '<span class="eco-tag">' + t + '</span>' for t in tags[:3]
+        ) + '</div>'
+        if tags else ""
+    )
+
+    # 描述：优先用 LLM 中文介绍
+    desc_html = cn_intro.replace("\n", "<br>") if cn_intro else (repo.get("description", "") or "")
+
+    return """<div class="repo-card custom-card">
+""" + source_banner + """
 <div class="repo-header">
-<span class="repo-rank">#{idx}</span>
-<a href="{repo['url']}" target="_blank" class="repo-name">{repo['full_name']}</a>
+<span class="repo-rank">#""" + str(idx) + """</span>
+<a href="""" + repo["url"] + """" target="_blank" class="repo-name">""" + repo["full_name"] + """</a>
 </div>
-<div class="repo-desc">{desc}</div>
+<div class="repo-desc">""" + desc_html + """</div>
 <div class="repo-stats">
-<span>⭐ {stars:,}</span>
-{"<span>📈 +" + f"{inc:,}</span>" if inc else ""}
-<span>🗣 {lang}</span>
+<span>⭐ """ + format(stars, ',') + """</span>
+""" + ("<span>📈 +" + format(inc, ',') + """</span>""" if inc else "") + """
+<span>🍴 """ + format(forks, ',') + """</span>
+<span>🗣 """ + lang + """</span>
+""" + health_html + """
 </div>
-{score_badge}
-{health_html}
-{tags and f'<div class="tag-bar">{tags}</div>'}
+""" + scores_html + """
+""" + tags_html + """
 <div class="dimensions">
 <div class="dim-title">🔍 多维度解读</div>
-{dims_html}
+""" + dims_html + """
 </div>
 </div>"""
 

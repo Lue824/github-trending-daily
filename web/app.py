@@ -742,6 +742,32 @@ body {{
     font-size: 0.72em;
     border: 1px solid rgba(88, 166, 255, 0.2);
 }}
+.repo-tags {{
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}}
+.repo-scores {{
+    margin-top: 8px;
+    color: var(--accent);
+    font-size: 0.8em;
+    font-weight: 500;
+}}
+.health-meta {{
+    color: var(--text-dim);
+    font-size: 0.78em;
+    margin-left: auto;
+}}
+.repo-stats {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 0.85em;
+    color: var(--text-dim);
+}}
 .dimensions {{
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border);
