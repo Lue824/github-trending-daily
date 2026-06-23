@@ -192,12 +192,12 @@ def _card(repo: dict, idx: int) -> str:
     # 评分徽章
     score_badge = ""
     if quality or hot:
-        score_badge = (
-            f'<div class="score-badges">'
-            f'{quality and f"<span class=\"badge badge-quality\">🏆 质量 {quality}</span>"}'
-            f'{hot and f"<span class=\"badge badge-hot\">🔥 热度 {hot}</span>"}'
-            f'</div>'
-        )
+        badge_parts = []
+        if quality:
+            badge_parts.append('<span class="badge badge-quality">🏆 质量 ' + str(quality) + '</span>')
+        if hot:
+            badge_parts.append('<span class="badge badge-hot">🔥 热度 ' + str(hot) + '</span>')
+        score_badge = '<div class="score-badges">' + "".join(badge_parts) + '</div>'
 
     # 健康度指标
     health_metrics = []
