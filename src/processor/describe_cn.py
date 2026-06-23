@@ -194,11 +194,11 @@ def generate_cn_detail(repo: dict) -> str:
     cn_topics = _pick_cn_topics(repo)
     name = repo.get("name", "").lower()
     full_name = repo.get("full_name", "")
-    language = repo.get("language", "Unknown")
-    desc = repo.get("description", "").strip()
-    stars = repo.get("stars", 0)
-    stars_today = repo.get("stars_in_period", 0) or 0
-    tags = repo.get("tags", [])
+    language = repo.get("language") or "Unknown"
+    desc = (repo.get("description") or "").strip()
+    stars = repo.get("stars") or 0
+    stars_today = repo.get("stars_in_period") or 0
+    tags = repo.get("tags") or []
 
     # 项目类型推断
     type_hint = ""
@@ -277,19 +277,32 @@ def _ecosystem_hint(topics: list[str]) -> str:
 
 def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
     """
-    结合元数据生成中文项目介绍（纯中文，LLM 不可用时的备选方案）
+    结合元数据 + README 生成多维度中文项目介绍（纯中文，LLM 不可用时的备选）
 
-    Returns 结构化介绍：项目定位 + 适用场景 + 技术栈 + 热度
+    Returns 格式与 LLM 输出对齐：
+    🚀 一句话定位 / 💡 核心价值 / 🎯 多维解读 / 📊 数据洞察
     """
     cn_topics = _pick_cn_topics(repo)
     name = repo.get("name", "").lower()
     full_name = repo.get("full_name", "")
-    language = repo.get("language", "Unknown")
-    desc = repo.get("description", "").strip()
-    stars = repo.get("stars", 0)
-    stars_today = repo.get("stars_in_period", 0) or 0
-    tags = repo.get("tags", [])
-    ecosystem = _ecosystem_hint(repo.get("topics", []))
+    language = repo.get("language") or "Unknown"
+    desc = (repo.get("description") or "").strip()
+    stars = repo.get("stars") or 0
+    stars_today = repo.get("stars_in_period") or 0
+    forks = repo.get("forks") or 0
+    tags = repo.get("tags") or []
+    topics = repo.get("topics", [])
+    ecosystem = _ecosystem_hint(topics)
+    extra = repo.get("_extra", {}) or {}
+
+    burst = repo.get("burst_score", 0)
+    quality = repo.get("quality_score", 0)
+    strea = repo.get("streak_days", 0)
+
+    contributors = extra.get("contributors", 0)
+    open_issues = extra.get("open_issues", 0)
+    last_push = extra.get("last_push_days", 999)
+    releases = extra.get("releases", 0)
 
     # 项目类型
     type_hint = ""
@@ -298,52 +311,168 @@ def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
             type_hint = hint
             break
 
+    # 生态标签
+    eco_tags = []
+    try:
+        from src.processor.ai_scoring import get_eco_tags
+        eco_tags = get_eco_tags(repo)
+    except Exception:
+        pass
+
     sections = []
 
-    # 1. 项目定位
+    # ── 🚀 一句话定位 ──────────────────────────────────
     topic_str = "、".join(cn_topics[:3]) if cn_topics else "通用"
-    loc = f"**📌 项目定位**：{full_name} 是一个{topic_str}领域的开源项目"
+    loc = f"🚀 **一句话定位**：{full_name} 是一个{topic_str}领域的开源项目"
     if type_hint:
         loc += f"，属于{type_hint}"
+    if desc and _is_mostly_chinese(desc):
+        loc += f"——{desc[:80]}"
     loc += "。"
     sections.append(loc)
 
-    # 2. 项目简介（用描述或话题推断）
-    if desc and _is_mostly_chinese(desc):
-        sections.append(f"**💡 项目简介**：{desc[:150]}。")
-    elif desc:
-        # 英文描述：提取关键信息，用中文说明
-        short = _clean_english_desc(desc)
-        if short:
-            sections.append(f"**💡 项目简介**：该项目主要涉及{f'，'.join(cn_topics[:5]) if cn_topics else topic_str}相关内容。")
+    # ── 💡 核心价值 ────────────────────────────────────
+    pain_points = _infer_pain_points(repo, readme_text)
+    if pain_points:
+        sections.append(f"💡 **核心价值**：{pain_points}")
     else:
-        if cn_topics:
-            sections.append(f"**💡 项目简介**：该项目聚焦于{'、'.join(cn_topics[:5])}等方向。")
+        value_parts = []
+        if stars_today >= 1000:
+            value_parts.append(f"今日新增 {stars_today:,} Star，增速惊人")
+        if quality >= 0.5:
+            value_parts.append("社区健康度优秀")
+        if eco_tags:
+            value_parts.append(f'属于 {"、".join(eco_tags[:3])} 生态')
+        if value_parts:
+            sections.append(f"💡 **核心价值**：{'，'.join(value_parts)}。")
+        elif desc:
+            sections.append(f"💡 **核心价值**：{_clean_english_desc(desc)}。")
+        else:
+            sections.append(f"💡 **核心价值**：该项目聚焦于{'、'.join(cn_topics[:5]) if cn_topics else topic_str}，具备较强的实用价值。")
 
-    # 3. 用途/场景
+    # ── 🎯 多维解读 ────────────────────────────────────
+    multi_parts = []
+
+    # 技术亮点
+    tech_parts = []
+    if language and language != "Unknown":
+        tech_parts.append(f"使用 {language} 开发")
+    if ecosystem:
+        tech_parts.append(f"属于 {ecosystem} 生态")
+    if contributors >= 10:
+        tech_parts.append(f"{contributors} 人协作贡献")
+    if releases >= 5:
+        tech_parts.append(f"已发布 {releases} 个 Release")
+    if last_push <= 7:
+        tech_parts.append("维护非常活跃")
+    if tech_parts:
+        multi_parts.append(f"- **技术亮点**：{'，'.join(tech_parts)}")
+
+    # 用户画像
+    user_hint = _infer_user_profile(repo)
+    if user_hint:
+        multi_parts.append(f"- **用户画像**：{user_hint}")
+
+    # 场景落地
     use_cases = _infer_use_cases(repo, readme_text)
     if use_cases:
-        sections.append(f"**🎯 适用场景**：{use_cases}。")
+        multi_parts.append(f"- **场景落地**：{use_cases}")
 
-    # 4. 技术栈
-    tech_parts = [f"使用 **{language}** 开发"]
-    if ecosystem:
-        tech_parts.append(f"属于 **{ecosystem}** 生态")
-    tech_parts.append(f"当前总星数 **{stars:,}**")
-    sections.append(f"**🛠️ 技术栈**：{'，'.join(tech_parts)}。")
+    if multi_parts:
+        sections.append(f"🎯 **多维解读**：\n{chr(10).join(multi_parts)}")
+    else:
+        sections.append(f"🎯 **多维解读**：\n- 技术栈以 {language} 为主\n- 适合关注 {'、'.join(cn_topics[:3]) if cn_topics else '开源'} 的开发者关注")
 
-    # 5. 热度
-    if stars_today > 5000:
-        sections.append(
-            f"**📈 今日热度**：新增 **{stars_today:,}** Star，增速极其迅猛，"
-            f"是当前 GitHub 最受关注的项目之一。"
-        )
-    elif stars_today > 1000:
-        sections.append(
-            f"**📈 今日热度**：新增 **{stars_today:,}** Star，热度持续攀升。"
-        )
+    # ── 📊 数据洞察 ────────────────────────────────────
+    insights = []
+    if burst > 0 and quality >= 0.4:
+        insights.append(f"爆发分 {burst:.2f} + 质量分 {quality:.2f}，属于双高项目，正在快速增长")
+    elif burst > 0:
+        insights.append(f"爆发分 {burst:.2f}，增速突出")
+    elif quality >= 0.5:
+        insights.append(f"质量分 {quality:.2f}，社区工程成熟度高")
+
+    if stars_today >= 5000:
+        insights.append(f"今日新增 {stars_today:,} Star，处于全网热度头部")
+    elif stars_today >= 1000:
+        insights.append(f"今日新增 {stars_today:,} Star，热度持续攀升")
+
+    if strea >= 5:
+        insights.append(f"连续 {strea} 天在榜，关注度稳定")
+
+    if open_issues > 50:
+        insights.append(f"开放 Issue 数量较高（{open_issues}），需关注维护压力")
+
+    if not insights:
+        insights.append(f"⭐ {stars:,} Star，{language} 生态中值得关注的项目")
+
+    sections.append(f"📊 **数据洞察**：{'；'.join(insights)}。")
 
     return "\n\n".join(sections)
+
+
+def _infer_pain_points(repo: dict, readme: str = "") -> str:
+    """根据项目元数据推断解决的痛点"""
+    topics = [t.lower() for t in repo.get("topics", [])]
+    name = repo.get("name", "").lower()
+    desc = (repo.get("description", "") or "").lower()
+
+    pain = []
+
+    if any(k in desc or k in " ".join(topics) for k in ("api", "no-api", "free")):
+        pain.append("降低 API 使用门槛和成本")
+    if any(k in desc or k in " ".join(topics) for k in ("browser", "scraping", "crawler")):
+        pain.append("自动化浏览器操作和网页数据抓取")
+    if any(k in desc or k in " ".join(topics) for k in ("agent", "automation", "autonomous")):
+        pain.append("让 AI Agent 具备自主执行任务的能力")
+    if any(k in desc or k in " ".join(topics) for k in ("security", "osint", "privacy")):
+        pain.append("提升信息安全和隐私保护能力")
+    if any(k in desc or k in " ".join(topics) for k in ("design", "ui", "figma")):
+        pain.append("加速设计到代码的转换效率")
+    if any(k in desc or k in " ".join(topics) for k in ("video", "media", "streaming")):
+        pain.append("简化视频和媒体内容创作流程")
+    if any(k in desc or k in " ".join(topics) for k in ("trading", "finance", "quant")):
+        pain.append("降低量化交易策略开发门槛")
+    if any(k in desc or k in " ".join(topics) for k in ("database", "sql", "storage")):
+        pain.append("解决数据存储和查询的性能瓶颈")
+    if any(k in desc or k in " ".join(topics) for k in ("doc", "sign", "pdf")):
+        pain.append("数字化传统纸质文档签署流程")
+    if any(k in desc or k in " ".join(topics) for k in ("monitoring", "observability", "logging")):
+        pain.append("提升系统可观测性和故障排查效率")
+
+    if not pain:
+        # 从描述推断
+        if repo.get("description"):
+            return f"解决 {repo['description'][:100]} 等实际问题"
+        return ""
+
+    return "；".join(pain[:3])
+
+
+def _infer_user_profile(repo: dict) -> str:
+    """推断典型用户群体"""
+    topics = [t.lower() for t in repo.get("topics", [])]
+    desc = (repo.get("description", "") or "").lower()
+
+    if any(k in desc or k in " ".join(topics) for k in ("agent", "claude", "llm", "ai")):
+        return "AI 开发者和 Agent 构建者"
+    if any(k in desc or k in " ".join(topics) for k in ("react", "vue", "frontend", "ui")):
+        return "前端开发者和 UI 设计师"
+    if any(k in desc or k in " ".join(topics) for k in ("rust", "cargo", "systems")):
+        return "系统编程和 Rust 生态开发者"
+    if any(k in desc or k in " ".join(topics) for k in ("python", "data", "ml")):
+        return "数据科学家和 Python 开发者"
+    if any(k in desc or k in " ".join(topics) for k in ("kubernetes", "docker", "devops")):
+        return "DevOps 和云原生工程师"
+    if any(k in desc or k in " ".join(topics) for k in ("mobile", "ios", "android", "flutter")):
+        return "移动端开发者和跨平台团队"
+    if any(k in desc or k in " ".join(topics) for k in ("security", "osint", "hacking")):
+        return "安全研究人员和白帽黑客"
+    if any(k in desc or k in " ".join(topics) for k in ("game", "engine", "3d")):
+        return "游戏开发者和图形工程师"
+    if any(k in desc or k in " ".join(topics) for k in ("finance", "trading", "quant")):
+        return "量化交易和金融科技从业者"
+    return "关注技术前沿的开发者"
 
 
 def _extract_readme_intro(readme: str) -> str:
@@ -417,7 +546,7 @@ def _infer_use_cases(repo: dict, readme: str = "") -> str:
     """根据项目信息推断使用场景"""
     topics = [t.lower() for t in repo.get("topics", [])]
     name = repo.get("name", "").lower()
-    desc = (repo.get("description", "") + " " + readme[:300]).lower()
+    desc = ((repo.get("description") or "") + " " + (readme or "")[:300]).lower()
     tags = repo.get("tags", [])
 
     cases = []

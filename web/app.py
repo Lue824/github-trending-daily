@@ -10,8 +10,7 @@ import os
 import sys
 import logging
 import json
-from datetime import datetime, timedelta
-from functools import lru_cache
+from datetime import datetime
 
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 
@@ -19,15 +18,11 @@ from flask import Flask, render_template_string, request, jsonify, send_from_dir
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _BASE_DIR)
 
-from src.fetcher.trending import fetch_all_trending
-from src.fetcher.search_api import fetch_all_api, fetch_readme
-from src.fetcher.extra_api import fetch_extra_batch
-from src.processor.dedup import deduplicate
-from src.processor.categorize import classify_repos, compute_hot_score, sort_by_hotness
-from src.processor.scoring import compute_all_scores
+from src.pipeline import run_pipeline
+from src.reporter.daily_report import generate_6section_report, save_6section_report
 from src.processor.custom_parser import parse_query, generate_sections
 from src.reporter.custom_report import generate_custom_report
-from src.storage.db import init_db, save_daily_repos, mark_consecutive_streak, get_yesterday_section_ranks
+from src.storage.db import get_conn
 from src.reporter.daily_report import generate_6section_report
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -49,116 +44,38 @@ if not os.path.exists(_REPORT_DIR):
 _cached_report: dict = {"content": "", "date": "", "repos": [], "meta": {}}
 
 
-def _run_pipeline(date_str: str = None):
-    """运行完整数据流水线，返回报告 HTML"""
+def _generate_report():
+    """运行流水线并生成报告"""
     global _cached_report
 
-    today = date_str or datetime.utcnow().strftime("%Y-%m-%d")
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    data = run_pipeline()
+    if not data:
+        return {"content": "<p>暂无数据，请稍后刷新</p>", "date": "", "repos": [], "meta": {}}
 
-    # 缓存检查
+    today = data["today"]
+    yesterday = data["yesterday"]
+
     if _cached_report["date"] == today and _cached_report["content"]:
         return _cached_report
 
-    init_db()
-
-    # 抓取
-    logger.info("Fetching data...")
-    trending_repos = fetch_all_trending()
-    api_repos = fetch_all_api()
-    all_raw = trending_repos + api_repos
-    logger.info(f"Fetched {len(all_raw)} raw repos")
-
-    if not all_raw:
-        return {"content": "<p>暂无数据，请稍后刷新</p>", "date": today, "repos": [], "meta": {}}
-
-    # 去重 + 分类
-    repos = deduplicate(all_raw)
-    repos = classify_repos(repos)
-    for r in repos:
-        r["hot_score"] = compute_hot_score(r)
-    repos = sort_by_hotness(repos)
-
-    # 标记连续在榜
-    repos = mark_consecutive_streak(repos, today, yesterday)
-
-    # 获取额外数据（健康度）— 无 Token 则跳过，避免 API 限流导致崩溃
-    extra_cache = {}
-    if os.getenv("GITHUB_TOKEN", ""):
-        logger.info("Fetching extra health data...")
-        extra_cache = fetch_extra_batch(repos)
-    else:
-        logger.info("Skipping extra health data (no GITHUB_TOKEN)")
-
-    # 计算6板块评分
-    repos = compute_all_scores(repos, extra_cache)
-
-    # 将 extra 数据挂到 repo 上
-    for r in repos:
-        r["_extra"] = extra_cache.get(r["full_name"], {})
-
-    # 获取 README（仅 TOP 项目）
-    report_repos = {}
-    for section_repos, n in [
-        ([r for r in repos if r["burst_score"] > 0], 10),
-        ([r for r in repos if r["quality_score"] >= 0.3], 10),
-        ([r for r in repos if r["ai_radar_score"] > 0], 10),
-    ]:
-        for r in section_repos[:n]:
-            report_repos[r["full_name"]] = r
-
-    readme_cache = {}
-    for r in list(report_repos.values())[:20]:
-        readme = fetch_readme(r["owner"], r["name"])
-        if readme:
-            readme_cache[r.get("full_name", f"{r['owner']}/{r['name']}")] = readme
-
-    # 昨日排名
-    yesterday_ranks = get_yesterday_section_ranks(yesterday)
-
-    # LLM 分析
-    llm_analyses = {}
-    trend_analysis = ""
-    try:
-        from src.processor.llm_summarize import summarize_project, analyze_trends
-        deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
-        if deepseek_key and readme_cache:
-            for full_name, r in report_repos.items():
-                readme = readme_cache.get(full_name, "")
-                if readme:
-                    analysis = summarize_project(r, readme)
-                    if analysis:
-                        llm_analyses[full_name] = analysis
-            if llm_analyses:
-                trend_analysis = analyze_trends(repos, readme_cache) or ""
-    except Exception as e:
-        logger.warning(f"LLM analysis failed: {e}")
-
-    # 保存到数据库
-    save_daily_repos(repos, today)
-
-    # 生成报告
     report_html = generate_6section_report(
-        repos, today, readme_cache, llm_analyses, trend_analysis,
-        yesterday_ranks, yesterday,
+        data["repos"], today, data["readme_cache"],
+        data["llm_analyses"], data["trend_analysis"],
+        data["yesterday_ranks"], yesterday,
     )
-
-    # 保存文件
-    from src.reporter.daily_report import save_6section_report
     save_6section_report(report_html, today)
 
     _cached_report = {
         "content": report_html,
         "date": today,
-        "repos": repos,
+        "repos": data["repos"],
         "meta": {
-            "total": len(repos),
-            "focus": sum(1 for r in repos if r.get("is_focus")),
-            "burst": sum(1 for r in repos if r.get("burst_score", 0) > 0),
-            "traps": sum(1 for r in repos if r.get("is_trap")),
+            "total": len(data["repos"]),
+            "focus": sum(1 for r in data["repos"] if r.get("is_focus")),
+            "burst": sum(1 for r in data["repos"] if r.get("burst_score", 0) > 0),
+            "traps": sum(1 for r in data["repos"] if r.get("is_trap")),
         },
     }
-
     return _cached_report
 
 
@@ -184,14 +101,14 @@ def api_daily():
             with open(report_files[0], "r", encoding="utf-8") as f:
                 html = f.read()
             date_str = os.path.basename(report_files[0]).replace("daily-6s-", "").replace(".html", "")
-            # 不再触发 _run_pipeline（避免每次访问都跑完整抓取导致超时）
+            # 不再触发 _generate_report（避免每次访问都跑完整抓取导致超时）
             # 自定义查询需要 repos 时，由 /api/custom 按需触发
             return jsonify({"date": date_str, "html": html})
         except Exception as e:
             logger.warning(f"Failed to read pre-generated report: {e}, falling back to live fetch")
     # 降级：实时抓取（仅在无预生成文件时）
     try:
-        report = _run_pipeline()
+        report = _generate_report()
         return jsonify({"date": report["date"], "html": report["content"]})
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)
@@ -204,7 +121,7 @@ def api_refresh():
     """强制刷新数据"""
     global _cached_report
     _cached_report = {"content": "", "date": "", "repos": [], "meta": {}}
-    report = _run_pipeline()
+    report = _generate_report()
     return jsonify({"ok": True, "date": report["date"]})
 
 
@@ -227,7 +144,7 @@ def api_custom():
     global _cached_report
     if not _cached_report.get("repos"):
         try:
-            _run_pipeline()
+            _generate_report()
         except Exception as e:
             return jsonify({"html": f'<p style="color:var(--accent-red)">数据加载失败: {e}</p>', "topic": query}), 500
 
@@ -251,7 +168,8 @@ def api_custom():
         })
     except Exception as e:
         logger.error(f"Custom report failed: {e}", exc_info=True)
-        return jsonify({"html": f'<p style="color:var(--accent-red)">生成失败: {e}</p>', "topic": query}), 500
+        # 不向客户端暴露内部错误细节
+        return jsonify({"html": '<p style="color:var(--accent-red)">生成失败，请稍后重试或检查 API Key 是否正确</p>', "topic": "error"}), 500
 
 
 @app.route("/api/subscribe", methods=["POST"])
@@ -298,65 +216,64 @@ def api_subscribe():
     try:
         with open(sub_path, "w", encoding="utf-8") as f:
             json.dump(subscription, f, ensure_ascii=False, indent=2)
-        logger.info(f"Subscription saved: {sub_type} -> {email}")
+        # 日志脱敏：不记录完整邮箱
+        masked_email = email[:2] + "***" + email[email.index("@"):] if "@" in email else "***"
+        logger.info(f"Subscription saved: {sub_type} -> {masked_email}")
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"保存订阅失败: {e}"}), 500
+        logger.error(f"Save subscription failed: {e}", exc_info=True)
+        return jsonify({"ok": False, "msg": "保存订阅失败，请稍后重试"}), 500
 
     # 立即发送一封当前类型的日报邮件
     try:
         send_subscription_email(subscription)
-        return jsonify({"ok": True, "msg": f"订阅成功！已发送{('自定义' if sub_type == 'custom' else '基础')}日报到 {email}", "subscription": subscription})
+        # 响应中不返回完整 subscription（含 api_key）
+        safe_response = {k: v for k, v in subscription.items() if k != "api_key"}
+        return jsonify({"ok": True, "msg": f"订阅成功！已发送{('自定义' if sub_type == 'custom' else '基础')}日报", "subscription": safe_response})
     except Exception as e:
         logger.error(f"Send subscription email failed: {e}", exc_info=True)
-        return jsonify({"ok": True, "msg": f"订阅已保存，但邮件发送失败: {e}（定时任务会正常推送）", "subscription": subscription})
+        safe_response = {k: v for k, v in subscription.items() if k != "api_key"}
+        return jsonify({"ok": True, "msg": "订阅已保存，邮件发送稍后重试", "subscription": safe_response})
 
 
 def send_subscription_email(subscription: dict):
-    """根据订阅类型发送对应日报邮件"""
+    """根据订阅类型发送对应日报邮件（线程安全，不修改全局配置）"""
     from src.notifier.email_sender import send_email
-    from config import EMAIL_CONFIG
 
-    global _cached_report
-    email = subscription["email"]
-    sub_type = subscription["type"]
-    # 临时覆盖接收人
-    original_receiver = EMAIL_CONFIG.get("receiver", "")
-    EMAIL_CONFIG["receiver"] = email
-    try:
-        if sub_type == "basic":
-            # 发送基础 6 板块日报
-            if not _cached_report.get("content"):
-                _run_pipeline()
-            html = _cached_report.get("content", "")
-            if not html:
-                # 降级读预生成文件
-                import glob
-                files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
-                if files:
-                    with open(files[0], "r", encoding="utf-8") as f:
-                        html = f.read()
-            subject = f"🚀 GitHub 每日热点（基础日报）— {datetime.utcnow().strftime('%Y-%m-%d')}"
-            send_email(subject, html)
-        else:
-            # 发送自定义日报
-            topic = subscription.get("topic", "自定义")
-            keywords = subscription.get("keywords", [])
-            api_key = subscription.get("api_key", "")
-            provider = subscription.get("provider", "")
+    email = subscription.get("email", "")
+    sub_type = subscription.get("type", "basic")
+
+    if sub_type == "basic":
+        # 发送基础 6 板块日报
+        if not _cached_report.get("content"):
+            _generate_report()
+        html = _cached_report.get("content", "")
+        if not html:
+            # 降级读预生成文件
+            import glob
+            files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
+            if files:
+                with open(files[0], "r", encoding="utf-8") as f:
+                    html = f.read()
+        subject = f"🚀 GitHub 每日热点（基础日报）— {datetime.utcnow().strftime('%Y-%m-%d')}"
+        send_email(subject, html, receiver=email)
+    else:
+        # 发送自定义日报
+        topic = subscription.get("topic", "自定义")
+        keywords = subscription.get("keywords", [])
+        api_key = subscription.get("api_key", "")
+        provider = subscription.get("provider", "")
+        repos = _cached_report.get("repos", [])
+        if not repos:
+            _generate_report()
             repos = _cached_report.get("repos", [])
-            if not repos:
-                _run_pipeline()
-                repos = _cached_report.get("repos", [])
-            parsed = parse_query(topic, api_key, provider)
-            if not parsed.get("keywords"):
-                parsed["keywords"] = keywords
-            sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key, provider)
-            basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
-            html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
-            subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {datetime.utcnow().strftime('%Y-%m-%d')}"
-            send_email(subject, html)
-    finally:
-        EMAIL_CONFIG["receiver"] = original_receiver
+        parsed = parse_query(topic, api_key, provider)
+        if not parsed.get("keywords"):
+            parsed["keywords"] = keywords
+        sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key, provider)
+        basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
+        html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
+        subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {datetime.utcnow().strftime('%Y-%m-%d')}"
+        send_email(subject, html, receiver=email)
 
 
 @app.route("/reports/<path:filename>")
@@ -977,7 +894,7 @@ function submitCustom() {{
     var apiKey = localStorage.getItem('llm_api_key') || localStorage.getItem('ds_api_key') || '';
     var provider = localStorage.getItem('llm_provider') || 'deepseek';
     var resultDiv = document.getElementById('customResult');
-    resultDiv.innerHTML = '<p style="text-align:center;color:var(--text-dim);padding:30px">🔍 正在解析「' + q + '」并生成日报...</p>';
+    resultDiv.innerHTML = '<p style="text-align:center;color:var(--text-dim);padding:30px">🔍 正在解析并生成日报...</p>';
     fetch('/api/custom', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
@@ -1043,10 +960,12 @@ function confirmSubscribe() {{
     .then(r => r.json())
     .then(data => {{
         if (data.ok) {{
-            msg.innerHTML = '<span style="color:var(--accent-green)">✅ ' + data.msg + '</span>';
+            msg.textContent = '✅ ' + data.msg;
+            msg.style.color = 'var(--accent-green)';
             setTimeout(closeSubscribeModal, 3000);
         }} else {{
-            msg.innerHTML = '<span style="color:var(--accent-red)">❌ ' + data.msg + '</span>';
+            msg.textContent = '❌ ' + data.msg;
+            msg.style.color = 'var(--accent-red)';
         }}
     }})
     .catch(e => {{
@@ -1114,4 +1033,4 @@ def run_web(host: str = "0.0.0.0", port: int = 5000, debug: bool = False):
 
 
 if __name__ == "__main__":
-    run_web(debug=True)
+    run_web(debug=os.getenv("FLASK_DEBUG", "0") == "1")

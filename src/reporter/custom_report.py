@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import datetime
 
 from config import REPORTS_DIR
+from src.utils.html_safe import esc, safe_href, safe_text_br, safe_url_path
 
 logger = logging.getLogger(__name__)
 
@@ -256,27 +257,37 @@ def _card(repo: dict, idx: int) -> str:
         if tags else ""
     )
 
-    # 描述：优先用 LLM 中文介绍
-    desc_html = cn_intro.replace("\n", "<br>") if cn_intro else (repo.get("description", "") or "")
+    # 描述：优先用 LLM 中文介绍（转义后保留换行）
+    desc_html = safe_text_br(cn_intro) if cn_intro else esc(repo.get("description") or "")
+
+    star_icon = "⭐"
+    inc_icon = "📈"
+    fork_icon = "🍴"
+    lang_icon = "🗣"
+    dim_icon = "🔍"
+
+    # 安全的 URL 和项目名
+    safe_url = safe_href(repo.get("url"))
+    safe_name = esc(repo.get("full_name") or "")
 
     return """<div class="repo-card custom-card">
 """ + source_banner + """
 <div class="repo-header">
 <span class="repo-rank">#""" + str(idx) + """</span>
-<a href="""" + repo["url"] + """" target="_blank" class="repo-name">""" + repo["full_name"] + """</a>
+<a href=\"""" + safe_url + """\" target="_blank" class="repo-name">""" + safe_name + """</a>
 </div>
 <div class="repo-desc">""" + desc_html + """</div>
 <div class="repo-stats">
-<span>⭐ """ + format(stars, ',') + """</span>
-""" + ("<span>📈 +" + format(inc, ',') + """</span>""" if inc else "") + """
-<span>🍴 """ + format(forks, ',') + """</span>
-<span>🗣 """ + lang + """</span>
+<span>""" + star_icon + """ """ + format(stars, ',') + """</span>
+""" + ("<span>" + inc_icon + " +" + format(inc, ',') + """</span>""" if inc else "") + """
+<span>""" + fork_icon + """ """ + format(forks, ',') + """</span>
+<span>""" + lang_icon + """ """ + esc(lang) + """</span>
 """ + health_html + """
 </div>
 """ + scores_html + """
 """ + tags_html + """
 <div class="dimensions">
-<div class="dim-title">🔍 多维度解读</div>
+<div class="dim-title">""" + dim_icon + """ 多维度解读</div>
 """ + dims_html + """
 </div>
 </div>"""
@@ -410,9 +421,9 @@ def generate_custom_report(
                 f'<div class="dashboard-item"><div class="dash-num">{sum(_get_extra(r).get("contributors",0) for r in matched)}</div><div class="dash-label">总贡献者</div></div>'
                 f'</div>'
                 f'<div class="lang-distribution"><h3>语言分布</h3>{lang_bars}</div>'
-                f'<div class="query-info"><strong>查询话题</strong>：{topic}'
-                f'<br><strong>关键词</strong>：{", ".join(keywords[:5])}'
-                f'<br><strong>解析来源</strong>：{source}</div>'
+                f'<div class="query-info"><strong>查询话题</strong>：{esc(topic)}'
+                f'<br><strong>关键词</strong>：{esc(", ".join(keywords[:5]))}'
+                f'<br><strong>解析来源</strong>：{esc(source)}</div>'
                 f'</div>'
             )
             sections_html.append('</section>')
@@ -464,8 +475,8 @@ def generate_custom_report(
 
     return f"""<div class="container custom-container">
 <div class="report-header">
-<h1>🔧 自定义日报 <span class="date">— {topic}</span></h1>
-<div class="report-meta">生成时间 {now} · 解析来源 {source}</div>
+<h1>🔧 自定义日报 <span class="date">— {esc(topic)}</span></h1>
+<div class="report-meta">生成时间 {now} · 解析来源 {esc(source)}</div>
 </div>
 {fallback_banner}
 <div class="summary-bar">
@@ -483,8 +494,12 @@ def generate_custom_report(
 
 def save_custom_report(html: str, topic: str) -> str:
     os.makedirs(REPORTS_DIR, exist_ok=True)
-    slug = topic.replace(" ", "-")[:30]
+    # 严格清洗 slug，防止路径遍历
+    slug = safe_url_path(topic)
     path = os.path.join(REPORTS_DIR, f"custom-{slug}.html")
+    # 校验最终路径在 REPORTS_DIR 内
+    if not os.path.abspath(path).startswith(os.path.abspath(REPORTS_DIR)):
+        raise ValueError("Invalid path: path traversal detected")
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
     return path

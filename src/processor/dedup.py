@@ -15,24 +15,27 @@ def deduplicate(repos: list[dict]) -> list[dict]:
     merged = {}
 
     for repo in repos:
-        key = repo["full_name"].lower()
+        key = (repo.get("full_name") or "").lower()
+        if not key:
+            continue
+        source = repo.get("source") or "unknown"
         if key not in merged:
             merged[key] = dict(repo)
-            merged[key]["sources"] = [repo["source"]]
+            merged[key]["sources"] = [source]
         else:
             existing = merged[key]
             # 合并来源
-            if repo["source"] not in existing["sources"]:
-                existing["sources"].append(repo["source"])
+            if source not in existing["sources"]:
+                existing["sources"].append(source)
             # 用非空值填补空字段
             for field in ("description", "language"):
                 if not existing.get(field) and repo.get(field):
                     existing[field] = repo[field]
-            if repo.get("stars", 0) > existing.get("stars", 0):
-                existing["stars"] = repo["stars"]
-            if repo.get("forks", 0) > existing.get("forks", 0):
-                existing["forks"] = repo["forks"]
-            existing["topics"] = list(set(existing.get("topics", []) + repo.get("topics", [])))
+            if (repo.get("stars") or 0) > (existing.get("stars") or 0):
+                existing["stars"] = repo.get("stars") or 0
+            if (repo.get("forks") or 0) > (existing.get("forks") or 0):
+                existing["forks"] = repo.get("forks") or 0
+            existing["topics"] = list(set((existing.get("topics") or []) + (repo.get("topics") or [])))
 
     result = list(merged.values())
     # 删除 sources 辅助字段之外保留

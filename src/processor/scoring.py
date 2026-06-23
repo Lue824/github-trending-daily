@@ -167,11 +167,11 @@ def _trap_signals(repo: dict, extra: dict) -> int:
     5. 今日增量巨大但 Fork 极少 (funnel)
     """
     signals = 0
-    stars = repo.get("stars", 1)
+    stars = repo.get("stars") or 1
 
     if extra:
-        open_issues = extra.get("open_issues", 0)
-        if open_issues / stars > 0.01 and open_issues > 10:
+        open_issues = extra.get("open_issues") or 0
+        if stars > 0 and open_issues / stars > 0.01 and open_issues > 10:
             signals += 1
 
         last_push = extra.get("last_push_days", 0)

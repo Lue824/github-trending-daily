@@ -20,9 +20,31 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+import contextlib
+
+
+@contextlib.contextmanager
+def db_transaction():
+    """数据库事务上下文管理器（自动关闭连接）
+
+    用法：
+        with db_transaction() as conn:
+            conn.execute(...)
+    """
+    conn = get_conn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def init_db():
     """初始化数据库表结构（含自动迁移）"""
-    with get_conn() as conn:
+    with db_transaction() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS daily_repos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,7 +113,7 @@ def init_db():
 
 def save_daily_repos(repos: list[dict], fetch_date: str):
     """保存一批当日仓库数据（含多维评分）"""
-    with get_conn() as conn:
+    with db_transaction() as conn:
         for repo in repos:
             conn.execute("""
                 INSERT OR REPLACE INTO daily_repos
@@ -153,7 +175,7 @@ def save_daily_summary(date: str, repos: list[dict], report_path: str = ""):
     )[:10]
     top_focus = [{"full_name": r["full_name"], "tags": r.get("tags", []), "stars": r.get("stars", 0)} for r in focus_repos]
 
-    with get_conn() as conn:
+    with db_transaction() as conn:
         conn.execute("""
             INSERT OR REPLACE INTO daily_summary
                 (date, total_repos, trending_repos, new_star_repos, focus_repos,
@@ -166,7 +188,7 @@ def save_daily_summary(date: str, repos: list[dict], report_path: str = ""):
 def get_history_for_repo(full_name: str, days: int = 7) -> list[dict]:
     """查询某个仓库在最近 N 天的记录（用于连续在榜判断）"""
     since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
-    with get_conn() as conn:
+    with db_transaction() as conn:
         rows = conn.execute(
             "SELECT fetch_date, stars, hot_score FROM daily_repos WHERE full_name = ? AND fetch_date >= ? ORDER BY fetch_date",
             (full_name, since)
@@ -176,7 +198,7 @@ def get_history_for_repo(full_name: str, days: int = 7) -> list[dict]:
 
 def mark_consecutive_streak(repos: list[dict], today: str, yesterday: str) -> list[dict]:
     """标记连续在榜的仓库（昨天也在榜）"""
-    with get_conn() as conn:
+    with db_transaction() as conn:
         yesterday_repos = set(
             r[0] for r in conn.execute(
                 "SELECT full_name FROM daily_repos WHERE fetch_date = ?", (yesterday,)
@@ -206,7 +228,7 @@ def mark_consecutive_streak(repos: list[dict], today: str, yesterday: str) -> li
 def get_yesterday_section_ranks(yesterday: str) -> dict:
     """获取昨天各区域的排名数据
 
-    重建与 generate_daily_report() 相同的 3 个排名区域，
+    按 3 个维度重建昨日在榜项目排名，
     返回 {full_name: {section_key: rank}} 映射。
 
     Args:
@@ -218,7 +240,7 @@ def get_yesterday_section_ranks(yesterday: str) -> dict:
         Only repos that made the top-N cut in each section are included.
         Returns empty dict if no data for yesterday.
     """
-    with get_conn() as conn:
+    with db_transaction() as conn:
         rows = conn.execute(
             "SELECT full_name, hot_score, stars, sources, is_focus "
             "FROM daily_repos WHERE fetch_date = ?",
@@ -264,7 +286,7 @@ def get_yesterday_section_ranks(yesterday: str) -> dict:
 def cleanup_old_data():
     """删除超过保留期限的数据"""
     cutoff = (datetime.utcnow() - timedelta(days=DATA_RETENTION_DAYS)).strftime("%Y-%m-%d")
-    with get_conn() as conn:
+    with db_transaction() as conn:
         deleted_repos = conn.execute("DELETE FROM daily_repos WHERE fetch_date < ?", (cutoff,)).rowcount
         deleted_summaries = conn.execute("DELETE FROM daily_summary WHERE date < ?", (cutoff,)).rowcount
         conn.commit()
@@ -275,7 +297,7 @@ def cleanup_old_data():
 def get_monthly_stats() -> dict:
     """获取过去30天的统计数据，用于月度趋势分析"""
     since = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
-    with get_conn() as conn:
+    with db_transaction() as conn:
         # 每日聚焦项目数量
         daily_focus = conn.execute("""
             SELECT fetch_date, COUNT(*) as cnt

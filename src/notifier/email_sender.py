@@ -12,24 +12,33 @@ from config import EMAIL_CONFIG
 logger = logging.getLogger(__name__)
 
 
-def send_email(subject: str, html_content: str) -> bool:
+def send_email(subject: str, html_content: str, receiver: str = None) -> bool:
     """
     通过 QQ 邮箱 SMTP 发送邮件
 
     Args:
         subject: 邮件主题
         html_content: HTML 格式的邮件正文
+        receiver: 指定收件人（不传则用配置中的默认收件人）
 
     Returns:
         True 如果发送成功
     """
-    sender = EMAIL_CONFIG.get("sender", "").strip()
-    password = EMAIL_CONFIG.get("password", "").strip()
-    receiver = EMAIL_CONFIG.get("receiver", "").strip()
+    sender = (EMAIL_CONFIG.get("sender") or "").strip()
+    password = (EMAIL_CONFIG.get("password") or "").strip()
+    # 优先使用传入的 receiver，避免修改全局配置导致的竞态条件
+    receiver = (receiver or EMAIL_CONFIG.get("receiver") or "").strip()
 
     if not sender or not password:
         logger.error("QQ email config missing: set QQ_EMAIL and QQ_EMAIL_AUTH_CODE in .env")
         return False
+
+    if not receiver:
+        logger.error("Email receiver is empty")
+        return False
+
+    smtp_host = EMAIL_CONFIG.get("smtp_host", "smtp.qq.com")
+    smtp_port = EMAIL_CONFIG.get("smtp_port", 465)
 
     msg = MIMEMultipart("alternative")
     msg["From"] = sender
@@ -39,13 +48,18 @@ def send_email(subject: str, html_content: str) -> bool:
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP_SSL(EMAIL_CONFIG["smtp_host"], EMAIL_CONFIG["smtp_port"], timeout=30) as server:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30) as server:
             server.login(sender, password)
             server.sendmail(sender, [receiver], msg.as_string())
-        logger.info(f"Email sent to {receiver}: {subject}")
+        # 日志脱敏
+        masked = receiver[:2] + "***" + receiver[receiver.index("@"):] if "@" in receiver else "***"
+        logger.info(f"Email sent to {masked}: {subject}")
         return True
-    except smtplib.SMTPException as e:
-        logger.error(f"Failed to send email: {e}")
+    except (smtplib.SMTPException, OSError, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to send email: {type(e).__name__}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error sending email: {type(e).__name__}: {e}")
         return False
 
 

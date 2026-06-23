@@ -76,4 +76,4 @@ def run(host="0.0.0.0", port=5001, debug=False):
 
 
 if __name__ == "__main__":
-    run(debug=True)
+    run(debug=os.getenv("FLASK_DEBUG", "0") == "1")

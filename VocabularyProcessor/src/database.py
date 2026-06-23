@@ -2,6 +2,7 @@
 SQLite 数据库模块
 存储词汇的基本信息、语义向量、使用频率及置信度评分
 """
+import contextlib
 import json
 import logging
 import os
@@ -22,8 +23,22 @@ def _conn():
     return c
 
 
+@contextlib.contextmanager
+def db_transaction():
+    """数据库事务上下文管理器（自动关闭连接）"""
+    db = _conn()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def init_db():
-    with _conn() as db:
+    with db_transaction() as db:
         db.executescript("""
             CREATE TABLE IF NOT EXISTS vocab (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +72,7 @@ def init_db():
 
 
 def word_exists(word: str) -> bool:
-    with _conn() as db:
+    with db_transaction() as db:
         r = db.execute("SELECT 1 FROM vocab WHERE word = ?", (word.lower(),)).fetchone()
     return r is not None
 
@@ -67,7 +82,7 @@ def save_word(word: str, vector: np.ndarray, quality: dict, source: str = "",
     """保存词汇到数据库（原子操作）"""
     now = datetime.utcnow().isoformat()
     vec_bytes = vector.tobytes() if vector is not None else b""
-    with _conn() as db:
+    with db_transaction() as db:
         try:
             db.execute("""
                 INSERT INTO vocab (word, vector, vector_dim, domain_score, length_score,
@@ -103,7 +118,7 @@ def save_word(word: str, vector: np.ndarray, quality: dict, source: str = "",
 
 
 def get_word(word: str) -> dict | None:
-    with _conn() as db:
+    with db_transaction() as db:
         r = db.execute("SELECT * FROM vocab WHERE word = ?", (word.lower(),)).fetchone()
     if not r:
         return None
@@ -115,13 +130,13 @@ def get_word(word: str) -> dict | None:
 
 
 def get_all_words() -> list[dict]:
-    with _conn() as db:
+    with db_transaction() as db:
         rows = db.execute("SELECT word, quality_score, frequency, is_verified, created_at FROM vocab ORDER BY quality_score DESC").fetchall()
     return [dict(r) for r in rows]
 
 
 def get_stats() -> dict:
-    with _conn() as db:
+    with db_transaction() as db:
         total = db.execute("SELECT COUNT(*) FROM vocab").fetchone()[0]
         verified = db.execute("SELECT COUNT(*) FROM vocab WHERE is_verified=1").fetchone()[0]
         avg_q = db.execute("SELECT AVG(quality_score) FROM vocab").fetchone()[0] or 0
@@ -130,6 +145,6 @@ def get_stats() -> dict:
 
 
 def get_recent_logs(limit: int = 20) -> list[dict]:
-    with _conn() as db:
+    with db_transaction() as db:
         rows = db.execute("SELECT * FROM vocab_log ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]

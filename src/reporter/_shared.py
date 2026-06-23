@@ -53,16 +53,29 @@ def section_anchor_id(section: str, rank: int) -> str:
 
 
 def brief_one_liner(repo: dict, llm_analyses: dict) -> str:
-    """从 LLM 分析中提取一句话要点摘要"""
+    """从 LLM 多维度分析中提取一句话要点摘要"""
     llm = llm_analyses.get(repo["full_name"], "")
     if llm:
-        llm = re.sub(r'好的[,，].*?介绍\s*', '', llm)
+        # 去掉可能的开场白
+        llm = re.sub(r'好的[,，].*?\n', '', llm)
+        # 提取 🚀 一句话定位 行的内容
+        for line in llm.split("\n"):
+            line = line.strip()
+            markers = ["🚀", "一句话定位", "**一句话定位**"]
+            if any(m in line for m in markers):
+                # 提取冒号后面的内容
+                parts = line.split("：", 1) if "：" in line else line.split(":", 1)
+                content = parts[1].strip() if len(parts) > 1 else line
+                content = content.replace("**", "").strip()
+                if len(content) > 10:
+                    return f"💡 {content}"
+                break
+        # 回退：取第一行非空且有意义的句子
         for line in llm.replace("\n", " ").split("。"):
             line = line.strip()
-            if line and len(line) > 10:
-                line = line.replace("**", "").replace("📌 它是什么", "").replace("：", "").replace(":", "").strip()
-                if len(line) > 15:
-                    return f"💡 {line}。"
+            line = re.sub(r'\*\*[^*]+\*\*[:：]?\s*', '', line).strip()
+            if len(line) > 15:
+                return f"💡 {line}。"
                 break
     from src.processor.describe_cn import generate_cn_description
     desc = generate_cn_description(repo)
