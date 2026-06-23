@@ -221,11 +221,14 @@ def _send_email_by_subscription(
             )
             subject = f"🚀 GitHub 每日热点 — {TODAY}"
 
-        success = send_email(subject, html)
-        if success:
-            logger.info(f"Email sent to {EMAIL_CONFIG['receiver']}")
-        else:
-            logger.warning("Email sending failed (check .env config)")
+        try:
+            success = send_email(subject, html)
+            if success:
+                logger.info(f"Email sent to {EMAIL_CONFIG['receiver']}")
+            else:
+                logger.warning("Email sending failed (check .env config)")
+        except Exception as e:
+            logger.warning(f"Email sending skipped (SMTP blocked in this environment): {e}")
     finally:
         EMAIL_CONFIG["receiver"] = original_receiver
 
