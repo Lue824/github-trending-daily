@@ -211,14 +211,18 @@ def _send_email_by_subscription(
             sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key)
             basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
             html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
+            # 保存报告文件
+            save_6section_report(html, TODAY)
             subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {TODAY}"
         else:
             # 基础日报
-            logger.info("Sending BASIC 6-section report")
+            logger.info("Generating BASIC 6-section report")
             html = generate_6section_report(
                 repos, TODAY, readme_cache, llm_analyses, trend_analysis,
                 yesterday_ranks, YESTERDAY,
             )
+            # 保存报告文件（必须，Web 站点从此读取）
+            save_6section_report(html, TODAY)
             subject = f"🚀 GitHub 每日热点 — {TODAY}"
 
         try:
