@@ -21,12 +21,13 @@ _INVALID_KEYS = ("", "sk-xxxxxxxxxxxx", "sk-xxx")
 
 
 def _resolve_key(api_key: str = "") -> str:
-    """解析有效 key：优先用传入的，其次用环境变量"""
+    """解析有效 key：仅使用传入的 key，不降级到环境变量
+
+    自定义模块个人化原则：用户没填自己的 key → 只走规则匹配，不消耗项目方额度。
+    """
     k = (api_key or "").strip()
     if k and k not in _INVALID_KEYS:
         return k
-    if DEEPSEEK_KEY and DEEPSEEK_KEY not in _INVALID_KEYS:
-        return DEEPSEEK_KEY
     return ""
 
 
