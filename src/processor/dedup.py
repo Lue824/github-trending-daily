@@ -10,6 +10,8 @@ def deduplicate(repos: list[dict]) -> list[dict]:
     2. 保留 sources 记录所有数据来源
     3. 信息合并时优先取非空字段
     """
+    if not repos:
+        return []
     merged = {}
 
     for repo in repos:

@@ -149,9 +149,11 @@ def fetch_readme(owner: str, name: str) -> str | None:
 
         # 移除 Markdown 标记，保留纯文本
         text = _strip_markdown(text)
-        # 取前 2500 字符
+        # 取前 2500 字符，尽量在句子边界截断
         if len(text) > 2500:
-            text = text[:2500].rsplit(".", 1)[0] + "."
+            truncated = text[:2500]
+            last_dot = truncated.rfind(".")
+            text = (truncated[:last_dot + 1] if last_dot > 500 else truncated) + "."
         return text.strip()
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch README for {owner}/{name}: {e}")

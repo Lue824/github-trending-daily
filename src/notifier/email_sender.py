@@ -23,9 +23,9 @@ def send_email(subject: str, html_content: str) -> bool:
     Returns:
         True 如果发送成功
     """
-    sender = EMAIL_CONFIG.get("sender")
-    password = EMAIL_CONFIG.get("password")
-    receiver = EMAIL_CONFIG.get("receiver")
+    sender = EMAIL_CONFIG.get("sender", "").strip()
+    password = EMAIL_CONFIG.get("password", "").strip()
+    receiver = EMAIL_CONFIG.get("receiver", "").strip()
 
     if not sender or not password:
         logger.error("QQ email config missing: set QQ_EMAIL and QQ_EMAIL_AUTH_CODE in .env")

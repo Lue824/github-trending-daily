@@ -19,12 +19,18 @@ TRENDING_BASE = "https://github.com/trending"
 
 def _parse_stars(text: str) -> int:
     """'1,234' -> 1234, '12.3k' -> 12300"""
-    text = text.strip().lower()
+    try:
+        text = text.strip().lower()
+    except (AttributeError, TypeError):
+        return 0
     if not text:
         return 0
-    if "k" in text:
-        return int(float(text.replace("k", "")) * 1000)
-    return int(text.replace(",", ""))
+    try:
+        if "k" in text:
+            return int(float(text.replace("k", "")) * 1000)
+        return int(text.replace(",", ""))
+    except (ValueError, TypeError):
+        return 0
 
 
 def _parse_stars_today(text: str) -> int:
@@ -120,8 +126,8 @@ def fetch_trending_page(language: str = "", since: str = "daily") -> list[dict]:
                 "source": f"trending/{since}",
                 "url": f"https://github.com/{full_name}",
             })
-        except Exception:
-            continue
+        except Exception as e:
+            logger.warning(f"Error parsing repo in trending/{language or 'all'}/{since}: {e}")
 
     logger.info(f"Fetched {len(repos)} repos from trending/{language or 'all'}/{since}")
     return repos
@@ -130,7 +136,7 @@ def fetch_trending_page(language: str = "", since: str = "daily") -> list[dict]:
 def fetch_all_trending() -> list[dict]:
     """抓取所有配置的语言和时间范围的 Trending 数据"""
     all_repos = []
-    for lang in TRENDING_LANGUAGES[:6]:  # 限制语言数，避免请求过多
+    for lang in TRENDING_LANGUAGES:
         for since in TRENDING_SINCE:
             repos = fetch_trending_page(lang, since)
             all_repos.extend(repos)

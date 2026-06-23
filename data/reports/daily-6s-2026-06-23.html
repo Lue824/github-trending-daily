@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitHub 每日热点 — 2026年06月23日</title>
+<style>
+:root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-green: #3fb950;
+    --accent-orange: #d2991d;
+    --accent-red: #f85149;
+    --accent-purple: #a371f7;
+    --code-bg: #1c2128;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 20px;
+}
+.container { max-width: 960px; margin: 0 auto; }
+h1 { font-size: 1.6em; margin-bottom: 4px; }
+h1 .date { color: var(--text-dim); font-size: 0.9em; }
+h2 {
+    font-size: 1.3em;
+    margin: 28px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+h2 .icon { margin-right: 6px; }
+.subtitle {
+    color: var(--text-dim);
+    font-size: 0.85em;
+    margin-bottom: 12px;
+}
+.summary-bar {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 12px 0 20px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.summary-item {
+    display: flex;
+    flex-direction: column;
+}
+.summary-item .num {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: var(--accent);
+}
+.summary-item .label {
+    font-size: 0.75em;
+    color: var(--text-dim);
+}
+.repo-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    transition: border-color 0.2s;
+}
+.repo-card:hover { border-color: var(--accent); }
+.repo-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.repo-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.8em;
+    flex-shrink: 0;
+}
+.repo-name {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 1.05em;
+    text-decoration: none;
+}
+.repo-name:hover { text-decoration: underline; }
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.72em;
+    font-weight: 600;
+}
+.badge-info { background: #1f6feb22; color: var(--accent); }
+.badge-warning { background: #d2991d22; color: var(--accent-orange); }
+.repo-desc {
+    color: var(--text-dim);
+    font-size: 0.88em;
+    margin-bottom: 8px;
+}
+.repo-stats {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 0.82em;
+    color: var(--text-dim);
+}
+.repo-stats span {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.health-meta { color: var(--accent-green); font-size: 0.8em; }
+.repo-scores {
+    margin-top: 6px;
+    font-size: 0.78em;
+    color: var(--accent-purple);
+}
+.repo-tags {
+    margin-top: 4px;
+    font-size: 0.76em;
+    color: var(--text-dim);
+}
+.lang-bar {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0;
+    flex-wrap: wrap;
+}
+.lang-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.82em;
+    padding: 4px 10px;
+    background: var(--code-bg);
+    border-radius: 4px;
+}
+.lang-fill {
+    height: 8px;
+    border-radius: 2px;
+    background: var(--accent-green);
+}
+.mark { color: var(--accent); }
+.trap-card { border-color: var(--accent-orange); }
+.trap-card:hover { border-color: var(--accent-red); }
+.streaks-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+    margin: 8px 0;
+}
+.streaks-table th {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-dim);
+}
+.streaks-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+}
+.streaks-table a { color: var(--accent); text-decoration: none; }
+.trend-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 10px;
+}
+.trend-block p { margin: 4px 0; }
+footer {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.75em;
+    margin-top: 40px;
+    padding: 20px 0;
+    border-top: 1px solid var(--border);
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🚀 GitHub 每日热点 <span class="date">— 2026年06月23日</span></h1>
+<div class="summary-bar">
+    <div class="summary-item"><span class="num">523</span><span class="label">收录项目</span></div>
+    <div class="summary-item"><span class="num">147</span><span class="label">AI/ML/具身智能</span></div>
+    <div class="summary-item"><span class="num">10</span><span class="label">正在爆发</span></div>
+    <div class="summary-item"><span class="num">0</span><span class="label">热度陷阱</span></div>
+    <div class="summary-item"><span class="num">140</span><span class="label">连续在榜</span></div>
+</div>
+
+<h2><span class="icon">🧨</span>正在爆发</h2>
+<div class="subtitle">增长加速度最大的项目（日增量≥100）</div>
+<div class="repo-card" id="b-r1">
+<div class="repo-header"><span class="repo-rank">#1</span><a href="https://github.com/Panniantong/Agent-Reach" target="_blank" class="repo-name">Panniantong/Agent-Reach</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**  <br>Agent Reach 是一个开源 CLI 工具，让 AI Agent 一键获得浏览互联网的能力，无需支付任何 API 费用。<br><br>**💡 解决什么问题**  <br>它解决了 AI Agent 无法直接访问 Twitter、Reddit、YouTube、小红书等平台的问题——这些平台要么需要付费 API，要么有封锁和登录门槛，用户需要自己折腾配置。Agent Reach 把这一切简化为一条命令，自动处理认证、数据清洗和平台风控。<br><br>**🎯 谁在用**  <br>使用 Claude Code、OpenClaw、Cursor、Windsurf 等 AI Agent 的开发者，需要让 Agent 执行搜索、抓取网页、提取字幕、监控 RSS 等真实互联网任务。</div>
+<div class="repo-stats">
+<span>⭐ 38,308</span>
+<span>📈 +8,108</span>
+<span>🍴 3,035</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 30 · 🐛 94 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.85 · 🏆 质量 0.68 · 🤖 AI 0.68</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="b-r2">
+<div class="repo-header"><span class="repo-rank">#2</span><a href="https://github.com/NVIDIA/SkillSpector" target="_blank" class="repo-name">NVIDIA/SkillSpector</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">好的，这是根据您提供的 GitHub 项目 README 内容生成的项目介绍：<br><br>**📌 它是什么**：SkillSpector 是一个专为 AI 智能体技能（Agent Skills）设计的安全扫描器，用于在安装前检测潜在漏洞、恶意模式和风险。<br><br>**💡 解决什么问题**：它解决了当前 AI 智能体技能（如 Claude Code、Codex CLI 等使用的技能）因缺乏审查而存在的严重安全隐患，帮助用户判断“这个技能安装是否安全”。<br><br>**🎯 谁在用**：使用 AI 编程助手（如 Claude Code、Codex CLI、Gemini CLI）的开发者，以及任何需要安装或评估第三方 AI 智能体技能的安全工程师和研究人员。</div>
+<div class="repo-stats">
+<span>⭐ 9,589</span>
+<span>📈 +3,302</span>
+<span>🍴 752</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 21 · 🐛 89 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.56 · 🤖 AI 0.60</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="b-r3">
+<div class="repo-header"><span class="repo-rank">#3</span><a href="https://github.com/calesthio/OpenMontage" target="_blank" class="repo-name">calesthio/OpenMontage</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**  <br>OpenMontage 是全球首个开源的智能视频制作系统，拥有 12 条流水线、52 种工具和 500 多项智能体技能，能将 AI 编程助手转变为完整的视频制作工作室。<br><br>**💡 解决什么问题**  <br>它解决了传统视频制作流程复杂、成本高昂的问题，用户只需用自然语言描述需求，智能体即可自动完成调研、脚本、素材生成、剪辑和最终合成，真正实现“一句话出片”。<br><br>**🎯 谁在用**  <br>适合内容创作者、独立开发者、小型团队以及需要快速生成高质量视频（如广告、动画短片、产品演示）的用户，尤其适合希望以极低成本（如 $0.15）完成专业级视频制作的场景。</div>
+<div class="repo-stats">
+<span>⭐ 14,023</span>
+<span>📈 +2,938</span>
+<span>🍴 1,709</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 3 · 🐛 88 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.52 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI` · `具身智能`</div>
+</div>
+<div class="repo-card" id="b-r4">
+<div class="repo-header"><span class="repo-rank">#4</span><a href="https://github.com/palmier-io/palmier-pro" target="_blank" class="repo-name">palmier-io/palmier-pro</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 Swift 开发。当前总星数 8,176，今日新增 2,463 星，关注度持续攀升。</div>
+<div class="repo-stats">
+<span>⭐ 8,176</span>
+<span>📈 +2,463</span>
+<span>🍴 535</span>
+<span>🗣 Swift</span>
+<span class="health-meta">👥 12 · 🐛 51 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.75</div>
+</div>
+<div class="repo-card" id="b-r5">
+<div class="repo-header"><span class="repo-rank">#5</span><a href="https://github.com/withastro/flue" target="_blank" class="repo-name">withastro/flue</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 TypeScript 开发。当前总星数 6,469，属于大模型/AI方向的热门项目，今日新增 1,413 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,469</span>
+<span>📈 +1,413</span>
+<span>🍴 364</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 20 · 🐛 9 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.73 · 🏆 质量 0.81 · 🤖 AI 0.63</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="b-r6">
+<div class="repo-header"><span class="repo-rank">#6</span><a href="https://github.com/google-research/timesfm" target="_blank" class="repo-name">google-research/timesfm</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：TimesFM 是 Google Research 开发的一个预训练时间序列基础模型，专为时间序列预测任务设计。<br><br>**💡 解决什么问题**：它解决了传统时间序列模型需要大量领域数据和定制训练的问题，提供了一个通用、高效的预训练模型，可直接用于多种预测场景。<br><br>**🎯 谁在用**：数据科学家、机器学习工程师和商业分析师，用于金融预测、需求规划、资源调度等需要时间序列预测的领域。</div>
+<div class="repo-stats">
+<span>⭐ 25,226</span>
+<span>📈 +4,259</span>
+<span>🍴 2,401</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 24 · 🐛 225 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.70 · 🏆 质量 0.66</div>
+</div>
+<div class="repo-card" id="b-r7">
+<div class="repo-header"><span class="repo-rank">#7</span><a href="https://github.com/Kilo-Org/kilocode" target="_blank" class="repo-name">Kilo-Org/kilocode</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：Kilo 是一个全能的 AI 编程工程平台，提供开源的编码代理，支持在 VS Code、JetBrains 或 CLI 中使用。<br><br>**💡 解决什么问题**：解决了开发者需要频繁切换工具和模型来辅助编程的痛点，提供统一的 AI 代理环境，支持 500+ 模型自由切换，且无 API 密钥门槛和价格加成。<br><br>**🎯 谁在用**：软件开发者、工程师团队，以及需要快速构建、部署和迭代代码的个人或组织，适用于日常编码、代码审查、架构设计等场景。</div>
+<div class="repo-stats">
+<span>⭐ 24,112</span>
+<span>📈 +4,029</span>
+<span>🍴 2,776</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 1114 · 🐛 818 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.70 · 🏆 质量 0.73 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="b-r8">
+<div class="repo-header"><span class="repo-rank">#8</span><a href="https://github.com/mattpocock/skills" target="_blank" class="repo-name">mattpocock/skills</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：这是一个专为真实工程场景设计的 AI 代理技能集合，来自资深工程师的日常实践，支持 Claude Code、Codex 等编码代理。<br><br>**💡 解决什么问题**：解决 AI 编码代理常见的两大痛点——代理不理解你的意图（通过 /grill-me 等技能进行深度对齐），以及代理输出过于冗长（通过简洁的技能设计提升效率）。<br><br>**🎯 谁在用**：使用 AI 编码代理的软件工程师，特别是那些需要精确控制代码生成、避免“氛围编码”的开发者，适用于日常开发、需求对齐和代码审查等场景。</div>
+<div class="repo-stats">
+<span>⭐ 142,776</span>
+<span>📈 +11,782</span>
+<span>🍴 12,330</span>
+<span>🗣 Shell</span>
+<span class="health-meta">👥 3 · 🐛 91 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.64 · 🤖 AI 0.57</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="b-r9">
+<div class="repo-header"><span class="repo-rank">#9</span><a href="https://github.com/addyosmani/agent-skills" target="_blank" class="repo-name">addyosmani/agent-skills</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：一个为 AI 编码代理提供生产级工程技能的 Shell 项目，通过 8 个斜杠命令覆盖开发全生命周期。<br><br>**💡 解决什么问题**：将资深工程师的工作流、质量门禁和最佳实践编码为可复用的技能包，确保 AI 代理在开发各阶段一致遵循规范，减少人工干预和错误。<br><br>**🎯 谁在用**：使用 Claude Code、Cursor、Gemini CLI 等 AI 编码工具的开发者，以及需要自动化规范开发流程的团队。</div>
+<div class="repo-stats">
+<span>⭐ 65,717</span>
+<span>📈 +5,277</span>
+<span>🍴 7,097</span>
+<span>🗣 Shell</span>
+<span class="health-meta">👥 39 · 🐛 143 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.70 · 🤖 AI 0.69</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="b-r10">
+<div class="repo-header"><span class="repo-rank">#10</span><a href="https://github.com/alibaba/zvec" target="_blank" class="repo-name">alibaba/zvec</a> <span class="badge badge-info">🆕 新上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 C++ 开发。当前总星数 12,262，今日新增 1,992 星，关注度持续攀升。</div>
+<div class="repo-stats">
+<span>⭐ 12,262</span>
+<span>📈 +1,992</span>
+<span>🍴 727</span>
+<span>🗣 C++</span>
+<span class="health-meta">👥 24 · 🐛 58 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.73</div>
+</div>
+<h2><span class="icon">🏆</span>质量标杆</h2>
+<div class="subtitle">健康度极高 + 社区活跃的高质量项目</div>
+<div class="repo-card" id="q-r1">
+<div class="repo-header"><span class="repo-rank">#1</span><a href="https://github.com/nautechsystems/nautilus_trader" target="_blank" class="repo-name">nautechsystems/nautilus_trader</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 Rust 开发。当前总星数 24,126。</div>
+<div class="repo-stats">
+<span>⭐ 24,126</span>
+<span>📈 +627</span>
+<span>🍴 3,056</span>
+<span>🗣 Rust</span>
+<span class="health-meta">👥 159 · 🐛 64 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.32 · 🏆 质量 0.87</div>
+</div>
+<div class="repo-card" id="q-r2">
+<div class="repo-header"><span class="repo-rank">#2</span><a href="https://github.com/ogulcancelik/herdr" target="_blank" class="repo-name">ogulcancelik/herdr</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 Rust 开发。当前总星数 6,886，属于大模型/AI方向的热门项目，今日新增 1,005 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,886</span>
+<span>📈 +1,005</span>
+<span>🍴 422</span>
+<span>🗣 Rust</span>
+<span class="health-meta">👥 34 · 🐛 23 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.86 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="q-r3">
+<div class="repo-header"><span class="repo-rank">#3</span><a href="https://github.com/withastro/flue" target="_blank" class="repo-name">withastro/flue</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 TypeScript 开发。当前总星数 6,469，属于大模型/AI方向的热门项目，今日新增 1,413 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,469</span>
+<span>📈 +1,413</span>
+<span>🍴 364</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 20 · 🐛 9 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.73 · 🏆 质量 0.81 · 🤖 AI 0.63</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="q-r4">
+<div class="repo-header"><span class="repo-rank">#4</span><a href="https://github.com/ZhuLinsen/daily_stock_analysis" target="_blank" class="repo-name">ZhuLinsen/daily_stock_analysis</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">好的，这是根据您提供的 GitHub 项目 README 内容生成的项目介绍：<br><br>**📌 它是什么**：一个由大语言模型驱动的多市场股票智能分析系统，能够每日自动生成并推送决策仪表盘。<br><br>**💡 解决什么问题**：解决了个人投资者需要手动收集、分析多市场股票信息（A股/港股/美股等）的痛点，通过AI自动化生成包含买卖点、风险警报等关键信息的决策报告，并支持零成本定时运行。<br><br>**🎯 谁在用**：需要高效跟踪自选股的个人投资者和量化交易爱好者，尤其适合希望利用AI辅助决策、并通过企业微信/飞书等渠道接收每日分析报告的用户。</div>
+<div class="repo-stats">
+<span>⭐ 46,516</span>
+<span>📈 +1,557</span>
+<span>🍴 42,197</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 88 · 🐛 39 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.40 · 🏆 质量 0.80 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="q-r5">
+<div class="repo-header"><span class="repo-rank">#5</span><a href="https://github.com/twentyhq/twenty" target="_blank" class="repo-name">twentyhq/twenty</a> <span class="badge badge-info">🆕 新上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 TypeScript 开发。当前总星数 51,270，今日新增 1,201 星，关注度持续攀升。</div>
+<div class="repo-stats">
+<span>⭐ 51,270</span>
+<span>📈 +1,201</span>
+<span>🍴 7,497</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 670 · 🐛 106 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.40 · 🏆 质量 0.79</div>
+</div>
+<div class="repo-card" id="q-r6">
+<div class="repo-header"><span class="repo-rank">#6</span><a href="https://github.com/LiveContainer/LiveContainer" target="_blank" class="repo-name">LiveContainer/LiveContainer</a> <span class="badge badge-info">🆕 新上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 Swift 开发。当前总星数 9,299。</div>
+<div class="repo-stats">
+<span>⭐ 9,299</span>
+<span>📈 +684</span>
+<span>🍴 764</span>
+<span>🗣 Swift</span>
+<span class="health-meta">👥 28 · 🐛 45 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.44 · 🏆 质量 0.78</div>
+</div>
+<div class="repo-card" id="q-r7">
+<div class="repo-header"><span class="repo-rank">#7</span><a href="https://github.com/iptv-org/iptv" target="_blank" class="repo-name">iptv-org/iptv</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：一个收集全球公开 IPTV 频道链接的开源项目，提供可直接播放的电视直播流媒体列表。<br><br>**💡 解决什么问题**：解决用户寻找免费、公开的全球电视直播源困难的问题，无需订阅传统有线电视或付费流媒体服务，即可通过任意支持直播的视频播放器观看。<br><br>**🎯 谁在用**：全球电视爱好者、流媒体技术爱好者、希望免费观看国际频道（如新闻、体育、娱乐）的用户，以及需要测试直播播放器的开发者。</div>
+<div class="repo-stats">
+<span>⭐ 127,830</span>
+<span>📈 +5,017</span>
+<span>🍴 7,033</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 402 · 🐛 38 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.52 · 🏆 质量 0.78 · 🤖 AI 0.59</div>
+<div class="repo-tags">`具身智能`</div>
+</div>
+<div class="repo-card" id="q-r8">
+<div class="repo-header"><span class="repo-rank">#8</span><a href="https://github.com/Adam-CAD/CADAM" target="_blank" class="repo-name">Adam-CAD/CADAM</a> <span class="badge badge-info">🆕 新上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 TypeScript 开发。当前总星数 4,599。</div>
+<div class="repo-stats">
+<span>⭐ 4,599</span>
+<span>📈 +570</span>
+<span>🍴 571</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 10 · 🐛 18 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.56 · 🏆 质量 0.77</div>
+</div>
+<div class="repo-card" id="q-r9">
+<div class="repo-header"><span class="repo-rank">#9</span><a href="https://github.com/affaan-m/ECC" target="_blank" class="repo-name">affaan-m/ECC</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个Claude、大模型、Claude Code领域的开源项目，使用 JavaScript 开发。当前总星数 220,183，属于大模型/AI方向。</div>
+<div class="repo-stats">
+<span>⭐ 220,183</span>
+<span>📈 +582</span>
+<span>🍴 33,735</span>
+<span>🗣 JavaScript</span>
+<span class="health-meta">👥 260 · 🐛 74 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.26 · 🏆 质量 0.77 · 🤖 AI 0.68</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="q-r10">
+<div class="repo-header"><span class="repo-rank">#10</span><a href="https://github.com/penpot/penpot" target="_blank" class="repo-name">penpot/penpot</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：Penpot 是一款开源的设计平台，专注于实现设计与代码的协作，支持浏览器使用或自托管部署。<br><br>**💡 解决什么问题**：它解决了设计团队与开发团队之间的协作鸿沟，通过基于代码的表达（如 SVG、CSS）和设计令牌，确保设计可直接转化为代码，同时避免供应商锁定，满足合规与治理需求。<br><br>**🎯 谁在用**：适用于需要规模化构建数字产品的设计团队和开发团队，特别是那些追求设计系统一致性、自动化工作流（如 AI 驱动）或严格安全合规的企业用户。</div>
+<div class="repo-stats">
+<span>⭐ 53,170</span>
+<span>📈 +2,983</span>
+<span>🍴 3,404</span>
+<span>🗣 Clojure</span>
+<span class="health-meta">👥 326 · 🐛 657 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.58 · 🏆 质量 0.75</div>
+</div>
+<h2><span class="icon">🌱</span>潜力新星</h2>
+<div class="subtitle">创建不超过90天、势头良好的新兴项目</div>
+<div class="repo-card" id="p-r1">
+<div class="repo-header"><span class="repo-rank">#1</span><a href="https://github.com/calesthio/OpenMontage" target="_blank" class="repo-name">calesthio/OpenMontage</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**  <br>OpenMontage 是全球首个开源的智能视频制作系统，拥有 12 条流水线、52 种工具和 500 多项智能体技能，能将 AI 编程助手转变为完整的视频制作工作室。<br><br>**💡 解决什么问题**  <br>它解决了传统视频制作流程复杂、成本高昂的问题，用户只需用自然语言描述需求，智能体即可自动完成调研、脚本、素材生成、剪辑和最终合成，真正实现“一句话出片”。<br><br>**🎯 谁在用**  <br>适合内容创作者、独立开发者、小型团队以及需要快速生成高质量视频（如广告、动画短片、产品演示）的用户，尤其适合希望以极低成本（如 $0.15）完成专业级视频制作的场景。</div>
+<div class="repo-stats">
+<span>⭐ 14,023</span>
+<span>📈 +2,938</span>
+<span>🍴 1,709</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 3 · 🐛 88 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.52 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI` · `具身智能`</div>
+</div>
+<div class="repo-card" id="p-r2">
+<div class="repo-header"><span class="repo-rank">#2</span><a href="https://github.com/ogulcancelik/herdr" target="_blank" class="repo-name">ogulcancelik/herdr</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 Rust 开发。当前总星数 6,886，属于大模型/AI方向的热门项目，今日新增 1,005 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,886</span>
+<span>📈 +1,005</span>
+<span>🍴 422</span>
+<span>🗣 Rust</span>
+<span class="health-meta">👥 34 · 🐛 23 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.86 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="p-r3">
+<div class="repo-header"><span class="repo-rank">#3</span><a href="https://github.com/palmier-io/palmier-pro" target="_blank" class="repo-name">palmier-io/palmier-pro</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个GitHub热门开源项目，使用 Swift 开发。当前总星数 8,176，今日新增 2,463 星，关注度持续攀升。</div>
+<div class="repo-stats">
+<span>⭐ 8,176</span>
+<span>📈 +2,463</span>
+<span>🍴 535</span>
+<span>🗣 Swift</span>
+<span class="health-meta">👥 12 · 🐛 51 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.75</div>
+</div>
+<h2><span class="icon">⚠️</span>热度陷阱</h2>
+<div class="subtitle">热度高但存在 issues 堆积/停更/单人维护等隐患</div>
+<div class="repo-card"><p style="color:var(--text-dim)">今日未检测到热度陷阱</p></div>
+<h2><span class="icon">🤖</span>AI / ML 雷达</h2>
+<div class="subtitle">AI领域综合评分最高的项目</div>
+<div class="repo-card" id="a-r1">
+<div class="repo-header"><span class="repo-rank">#1</span><a href="https://github.com/NousResearch/hermes-agent" target="_blank" class="repo-name">NousResearch/hermes-agent</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个AI、Claude、大模型领域的开源项目，属于AI Agent 相关工具，使用 Python 开发。当前总星数 200,431，属于大模型/AI方向。</div>
+<div class="repo-stats">
+<span>⭐ 200,431</span>
+<span>📈 +933</span>
+<span>🍴 35,724</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 1652 · 🐛 22971 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.26 · 🏆 质量 0.69 · 🤖 AI 0.76</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r2">
+<div class="repo-header"><span class="repo-rank">#2</span><a href="https://github.com/asgeirtj/system_prompts_leaks" target="_blank" class="repo-name">asgeirtj/system_prompts_leaks</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：一个持续更新的开源项目，专门收集和整理各大 AI 聊天机器人（如 Claude、ChatGPT、Gemini 等）的系统提示词（System Prompt）指令。<br><br>**💡 解决什么问题**：揭示了 AI 模型背后隐藏的行为规则和指令，帮助用户理解 AI 的运作逻辑，并支持对比不同模型或版本之间的系统提示差异。<br><br>**🎯 谁在用**：AI 研究人员、开发者、技术爱好者，以及关注 AI 透明度和行为分析的媒体与公众。典型场景包括模型行为对比、提示工程研究，以及了解 AI 产品更新后的规则变化。</div>
+<div class="repo-stats">
+<span>⭐ 45,252</span>
+<span>📈 +2,612</span>
+<span>🍴 7,450</span>
+<span>🗣 JavaScript</span>
+<span class="health-meta">👥 21 · 🐛 28 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.58 · 🏆 质量 0.70 · 🤖 AI 0.71</div>
+<div class="repo-tags">`大模型/AI` · `具身智能`</div>
+</div>
+<div class="repo-card" id="a-r3">
+<div class="repo-header"><span class="repo-rank">#3</span><a href="https://github.com/addyosmani/agent-skills" target="_blank" class="repo-name">addyosmani/agent-skills</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：一个为 AI 编码代理提供生产级工程技能的 Shell 项目，通过 8 个斜杠命令覆盖开发全生命周期。<br><br>**💡 解决什么问题**：将资深工程师的工作流、质量门禁和最佳实践编码为可复用的技能包，确保 AI 代理在开发各阶段一致遵循规范，减少人工干预和错误。<br><br>**🎯 谁在用**：使用 Claude Code、Cursor、Gemini CLI 等 AI 编码工具的开发者，以及需要自动化规范开发流程的团队。</div>
+<div class="repo-stats">
+<span>⭐ 65,717</span>
+<span>📈 +5,277</span>
+<span>🍴 7,097</span>
+<span>🗣 Shell</span>
+<span class="health-meta">👥 39 · 🐛 143 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.70 · 🤖 AI 0.69</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r4">
+<div class="repo-header"><span class="repo-rank">#4</span><a href="https://github.com/Panniantong/Agent-Reach" target="_blank" class="repo-name">Panniantong/Agent-Reach</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**  <br>Agent Reach 是一个开源 CLI 工具，让 AI Agent 一键获得浏览互联网的能力，无需支付任何 API 费用。<br><br>**💡 解决什么问题**  <br>它解决了 AI Agent 无法直接访问 Twitter、Reddit、YouTube、小红书等平台的问题——这些平台要么需要付费 API，要么有封锁和登录门槛，用户需要自己折腾配置。Agent Reach 把这一切简化为一条命令，自动处理认证、数据清洗和平台风控。<br><br>**🎯 谁在用**  <br>使用 Claude Code、OpenClaw、Cursor、Windsurf 等 AI Agent 的开发者，需要让 Agent 执行搜索、抓取网页、提取字幕、监控 RSS 等真实互联网任务。</div>
+<div class="repo-stats">
+<span>⭐ 38,308</span>
+<span>📈 +8,108</span>
+<span>🍴 3,035</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 30 · 🐛 94 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.85 · 🏆 质量 0.68 · 🤖 AI 0.68</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r5">
+<div class="repo-header"><span class="repo-rank">#5</span><a href="https://github.com/affaan-m/ECC" target="_blank" class="repo-name">affaan-m/ECC</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个Claude、大模型、Claude Code领域的开源项目，使用 JavaScript 开发。当前总星数 220,183，属于大模型/AI方向。</div>
+<div class="repo-stats">
+<span>⭐ 220,183</span>
+<span>📈 +582</span>
+<span>🍴 33,735</span>
+<span>🗣 JavaScript</span>
+<span class="health-meta">👥 260 · 🐛 74 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.26 · 🏆 质量 0.77 · 🤖 AI 0.68</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r6">
+<div class="repo-header"><span class="repo-rank">#6</span><a href="https://github.com/Kilo-Org/kilocode" target="_blank" class="repo-name">Kilo-Org/kilocode</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**：Kilo 是一个全能的 AI 编程工程平台，提供开源的编码代理，支持在 VS Code、JetBrains 或 CLI 中使用。<br><br>**💡 解决什么问题**：解决了开发者需要频繁切换工具和模型来辅助编程的痛点，提供统一的 AI 代理环境，支持 500+ 模型自由切换，且无 API 密钥门槛和价格加成。<br><br>**🎯 谁在用**：软件开发者、工程师团队，以及需要快速构建、部署和迭代代码的个人或组织，适用于日常编码、代码审查、架构设计等场景。</div>
+<div class="repo-stats">
+<span>⭐ 24,112</span>
+<span>📈 +4,029</span>
+<span>🍴 2,776</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 1114 · 🐛 818 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.70 · 🏆 质量 0.73 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r7">
+<div class="repo-header"><span class="repo-rank">#7</span><a href="https://github.com/calesthio/OpenMontage" target="_blank" class="repo-name">calesthio/OpenMontage</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">**📌 它是什么**  <br>OpenMontage 是全球首个开源的智能视频制作系统，拥有 12 条流水线、52 种工具和 500 多项智能体技能，能将 AI 编程助手转变为完整的视频制作工作室。<br><br>**💡 解决什么问题**  <br>它解决了传统视频制作流程复杂、成本高昂的问题，用户只需用自然语言描述需求，智能体即可自动完成调研、脚本、素材生成、剪辑和最终合成，真正实现“一句话出片”。<br><br>**🎯 谁在用**  <br>适合内容创作者、独立开发者、小型团队以及需要快速生成高质量视频（如广告、动画短片、产品演示）的用户，尤其适合希望以极低成本（如 $0.15）完成专业级视频制作的场景。</div>
+<div class="repo-stats">
+<span>⭐ 14,023</span>
+<span>📈 +2,938</span>
+<span>🍴 1,709</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 3 · 🐛 88 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.52 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI` · `具身智能`</div>
+</div>
+<div class="repo-card" id="a-r8">
+<div class="repo-header"><span class="repo-rank">#8</span><a href="https://github.com/ZhuLinsen/daily_stock_analysis" target="_blank" class="repo-name">ZhuLinsen/daily_stock_analysis</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">好的，这是根据您提供的 GitHub 项目 README 内容生成的项目介绍：<br><br>**📌 它是什么**：一个由大语言模型驱动的多市场股票智能分析系统，能够每日自动生成并推送决策仪表盘。<br><br>**💡 解决什么问题**：解决了个人投资者需要手动收集、分析多市场股票信息（A股/港股/美股等）的痛点，通过AI自动化生成包含买卖点、风险警报等关键信息的决策报告，并支持零成本定时运行。<br><br>**🎯 谁在用**：需要高效跟踪自选股的个人投资者和量化交易爱好者，尤其适合希望利用AI辅助决策、并通过企业微信/飞书等渠道接收每日分析报告的用户。</div>
+<div class="repo-stats">
+<span>⭐ 46,516</span>
+<span>📈 +1,557</span>
+<span>🍴 42,197</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 88 · 🐛 39 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.40 · 🏆 质量 0.80 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r9">
+<div class="repo-header"><span class="repo-rank">#9</span><a href="https://github.com/ogulcancelik/herdr" target="_blank" class="repo-name">ogulcancelik/herdr</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 Rust 开发。当前总星数 6,886，属于大模型/AI方向的热门项目，今日新增 1,005 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,886</span>
+<span>📈 +1,005</span>
+<span>🍴 422</span>
+<span>🗣 Rust</span>
+<span class="health-meta">👥 34 · 🐛 23 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.86 · 🤖 AI 0.65</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r10">
+<div class="repo-header"><span class="repo-rank">#10</span><a href="https://github.com/Kong/insomnia" target="_blank" class="repo-name">Kong/insomnia</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI、具身智能领域的开源项目，使用 TypeScript 开发。当前总星数 39,583，属于大模型/AI、具身智能方向的热门项目，今日新增 1,074 星。</div>
+<div class="repo-stats">
+<span>⭐ 39,583</span>
+<span>📈 +1,074</span>
+<span>🍴 2,344</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 361 · 🐛 854 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.40 · 🏆 质量 0.69 · 🤖 AI 0.64</div>
+<div class="repo-tags">`大模型/AI` · `具身智能`</div>
+</div>
+<div class="repo-card" id="a-r11">
+<div class="repo-header"><span class="repo-rank">#11</span><a href="https://github.com/withastro/flue" target="_blank" class="repo-name">withastro/flue</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 TypeScript 开发。当前总星数 6,469，属于大模型/AI方向的热门项目，今日新增 1,413 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,469</span>
+<span>📈 +1,413</span>
+<span>🍴 364</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 20 · 🐛 9 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.73 · 🏆 质量 0.81 · 🤖 AI 0.63</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r12">
+<div class="repo-header"><span class="repo-rank">#12</span><a href="https://github.com/NVIDIA/SkillSpector" target="_blank" class="repo-name">NVIDIA/SkillSpector</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">好的，这是根据您提供的 GitHub 项目 README 内容生成的项目介绍：<br><br>**📌 它是什么**：SkillSpector 是一个专为 AI 智能体技能（Agent Skills）设计的安全扫描器，用于在安装前检测潜在漏洞、恶意模式和风险。<br><br>**💡 解决什么问题**：它解决了当前 AI 智能体技能（如 Claude Code、Codex CLI 等使用的技能）因缺乏审查而存在的严重安全隐患，帮助用户判断“这个技能安装是否安全”。<br><br>**🎯 谁在用**：使用 AI 编程助手（如 Claude Code、Codex CLI、Gemini CLI）的开发者，以及任何需要安装或评估第三方 AI 智能体技能的安全工程师和研究人员。</div>
+<div class="repo-stats">
+<span>⭐ 9,589</span>
+<span>📈 +3,302</span>
+<span>🍴 752</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 21 · 🐛 89 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.79 · 🏆 质量 0.56 · 🤖 AI 0.60</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r13">
+<div class="repo-header"><span class="repo-rank">#13</span><a href="https://github.com/stablyai/orca" target="_blank" class="repo-name">stablyai/orca</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 TypeScript 开发。当前总星数 6,157，属于大模型/AI方向的热门项目，今日新增 1,123 星。</div>
+<div class="repo-stats">
+<span>⭐ 6,157</span>
+<span>📈 +1,123</span>
+<span>🍴 457</span>
+<span>🗣 TypeScript</span>
+<span class="health-meta">👥 128 · 🐛 606 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.64 · 🏆 质量 0.71 · 🤖 AI 0.60</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r14">
+<div class="repo-header"><span class="repo-rank">#14</span><a href="https://github.com/bytedance/deer-flow" target="_blank" class="repo-name">bytedance/deer-flow</a> <span class="badge badge-info">📌 昨日也上榜</span></div>
+<div class="repo-desc">这是一个大模型/AI领域的开源项目，使用 Python 开发。当前总星数 73,678，属于大模型/AI方向。</div>
+<div class="repo-stats">
+<span>⭐ 73,678</span>
+<span>📈 +738</span>
+<span>🍴 9,951</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 286 · 🐛 954 issues · 🟢 活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.32 · 🏆 质量 0.62 · 🤖 AI 0.60</div>
+<div class="repo-tags">`大模型/AI`</div>
+</div>
+<div class="repo-card" id="a-r15">
+<div class="repo-header"><span class="repo-rank">#15</span><a href="https://github.com/microsoft/qlib" target="_blank" class="repo-name">microsoft/qlib</a> <span class="badge badge-info">🆕 新上榜</span></div>
+<div class="repo-desc">这是一个机器学习、大模型/AI、具身智能领域的开源项目，使用 Python 开发。当前总星数 45,036，属于机器学习、大模型/AI、具身智能方向。</div>
+<div class="repo-stats">
+<span>⭐ 45,036</span>
+<span>📈 +558</span>
+<span>🍴 7,164</span>
+<span>🗣 Python</span>
+<span class="health-meta">👥 151 · 🐛 444 issues · 🟡 较活跃</span>
+</div>
+<div class="repo-scores">🧨 爆发 0.32 · 🏆 质量 0.55 · 🤖 AI 0.59</div>
+<div class="repo-tags">`机器学习` · `大模型/AI` · `具身智能`</div>
+</div>
+<h2><span class="icon">📊</span>今日数据看板</h2>
+<h3 style="font-size:1em;margin:16px 0 8px;">编程语言分布</h3>
+<div class="lang-bar">
+<div class="lang-item"><span class="lang-fill" style="width:80px"></span>Go 9.2% (48)</div>
+<div class="lang-item"><span class="lang-fill" style="width:76px"></span>TypeScript 8.8% (46)</div>
+<div class="lang-item"><span class="lang-fill" style="width:75px"></span>Java 8.6% (45)</div>
+<div class="lang-item"><span class="lang-fill" style="width:70px"></span>Python 8.0% (42)</div>
+<div class="lang-item"><span class="lang-fill" style="width:63px"></span>C++ 7.3% (38)</div>
+<div class="lang-item"><span class="lang-fill" style="width:60px"></span>PHP 6.9% (36)</div>
+<div class="lang-item"><span class="lang-fill" style="width:58px"></span>Rust 6.7% (35)</div>
+<div class="lang-item"><span class="lang-fill" style="width:56px"></span>C 6.5% (34)</div>
+</div>
+<h3 style="font-size:1em;margin:16px 0 8px;">连续在榜项目</h3>
+<table class="streaks-table"><tr><th>项目</th><th>连续</th><th>⭐</th><th>领域</th></tr>
+<tr><td><a href="https://github.com/mattpocock/skills" target="_blank">mattpocock/skills</a></td><td>2天</td><td>142,776</td><td>大模型/AI</td></tr>
+<tr><td><a href="https://github.com/Panniantong/Agent-Reach" target="_blank">Panniantong/Agent-Reach</a></td><td>2天</td><td>38,308</td><td>大模型/AI</td></tr>
+<tr><td><a href="https://github.com/addyosmani/agent-skills" target="_blank">addyosmani/agent-skills</a></td><td>2天</td><td>65,717</td><td>大模型/AI</td></tr>
+<tr><td><a href="https://github.com/iptv-org/iptv" target="_blank">iptv-org/iptv</a></td><td>2天</td><td>127,830</td><td>具身智能</td></tr>
+<tr><td><a href="https://github.com/google-research/timesfm" target="_blank">google-research/timesfm</a></td><td>2天</td><td>25,226</td><td>-</td></tr>
+<tr><td><a href="https://github.com/Kilo-Org/kilocode" target="_blank">Kilo-Org/kilocode</a></td><td>2天</td><td>24,112</td><td>大模型/AI</td></tr>
+<tr><td><a href="https://github.com/NVIDIA/SkillSpector" target="_blank">NVIDIA/SkillSpector</a></td><td>2天</td><td>9,589</td><td>大模型/AI</td></tr>
+<tr><td><a href="https://github.com/penpot/penpot" target="_blank">penpot/penpot</a></td><td>2天</td><td>53,170</td><td>-</td></tr>
+<tr><td><a href="https://github.com/calesthio/OpenMontage" target="_blank">calesthio/OpenMontage</a></td><td>2天</td><td>14,023</td><td>大模型/AI、具身智能</td></tr>
+<tr><td><a href="https://github.com/freeCodeCamp/freeCodeCamp" target="_blank">freeCodeCamp/freeCodeCamp</a></td><td>2天</td><td>450,316</td><td>-</td></tr>
+</table>
+<h3 style="font-size:1em;margin:16px 0 8px;">趋势分析</h3>
+<div class="trend-block">根据今日 GitHub 热门项目数据，总结出以下 5 条核心趋势：<br><br>**趋势 1：AI 智能体技能工程化** — 开发者正系统化构建和共享 AI 编码代理的生产级技能库，代表项目：mattpocock/skills、addyosmani/agent-skills。<br><br>**趋势 2：AI 代理能力全面扩展** — 赋予 AI 代理多平台信息获取与视频制作等综合能力，代表项目：Panniantong/Agent-Reach、calesthio/OpenMontage。<br><br>**趋势 3：AI 安全与合规受关注** — 随着 AI 代理技能激增，针对技能的安全扫描与漏洞检测工具需求上升，代表项目：NVIDIA/SkillSpector。<br><br>**趋势 4：开源替代品持续涌现** — 社区积极开发主流商业工具的免费开源替代，覆盖视频编辑与设计协作，代表项目：OpenCut-app/OpenCut、penpot/penpot。<br><br>**趋势 5：时间序列与向量数据库基础模型成熟** — 大模型技术向时间序列预测和轻量级向量检索等垂直领域深化，代表项目：google-research/timesfm、alibaba/zvec。<br><br>总结：今日 GitHub 热门项目集中体现了 AI 智能体从技能构建、能力扩展、安全治理到工具替代的全链路成熟化趋势，同时基础模型与基础设施也在持续进化。</div>
+
+<footer>
+    📬 本报告由 GitHub Trending Daily Bot 自动生成 — 2026-06-23 00:00 UTC
+</footer>
+</div>
+</body>
+</html>

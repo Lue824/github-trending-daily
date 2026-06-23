@@ -21,7 +21,7 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db():
-    """初始化数据库表结构"""
+    """初始化数据库表结构（含自动迁移）"""
     with get_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS daily_repos (
@@ -69,12 +69,28 @@ def init_db():
                 report_path TEXT DEFAULT ''
             );
         """)
+
+        # ── 迁移：新增多维评分字段 ──────────────────────
+        new_cols = [
+            ("burst_score", "REAL DEFAULT 0.0"),
+            ("quality_score", "REAL DEFAULT 0.0"),
+            ("potential_score", "REAL DEFAULT 0.0"),
+            ("ai_radar_score", "REAL DEFAULT 0.0"),
+            ("is_trap", "INTEGER DEFAULT 0"),
+            ("trap_signals", "INTEGER DEFAULT 0"),
+            ("extra_data", "TEXT DEFAULT '{}'"),
+        ]
+        existing = {r[1] for r in conn.execute("PRAGMA table_info(daily_repos)").fetchall()}
+        for col_name, col_def in new_cols:
+            if col_name not in existing:
+                conn.execute(f"ALTER TABLE daily_repos ADD COLUMN {col_name} {col_def}")
+                logger.info(f"Migrated DB: added column {col_name}")
         conn.commit()
     logger.info("Database initialized")
 
 
 def save_daily_repos(repos: list[dict], fetch_date: str):
-    """保存一批当日仓库数据"""
+    """保存一批当日仓库数据（含多维评分）"""
     with get_conn() as conn:
         for repo in repos:
             conn.execute("""
@@ -82,8 +98,11 @@ def save_daily_repos(repos: list[dict], fetch_date: str):
                     (full_name, owner, name, description, language,
                      stars, forks, stars_in_period, topics, tags,
                      is_focus, hot_score, sources, url, fetch_date,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     created_at, updated_at,
+                     burst_score, quality_score, potential_score,
+                     ai_radar_score, is_trap, trap_signals, extra_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?)
             """, (
                 repo["full_name"],
                 repo["owner"],
@@ -102,6 +121,13 @@ def save_daily_repos(repos: list[dict], fetch_date: str):
                 fetch_date,
                 repo.get("created_at"),
                 repo.get("updated_at"),
+                repo.get("burst_score", 0),
+                repo.get("quality_score", 0),
+                repo.get("potential_score", 0),
+                repo.get("ai_radar_score", 0),
+                1 if repo.get("is_trap") else 0,
+                repo.get("trap_signals", 0),
+                json.dumps(repo.get("_extra", {})),
             ))
         conn.commit()
     logger.info(f"Saved {len(repos)} repos for {fetch_date}")
