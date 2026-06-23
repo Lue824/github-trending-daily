@@ -175,7 +175,7 @@ def index():
 
 @app.route("/api/daily")
 def api_daily():
-    """异步获取日报数据 — 优先读预生成文件，无则实时抓取"""
+    """异步获取日报数据 — 优先读预生成文件（秒开），无则实时抓取"""
     import glob
     # 优先读取预生成的 6 板块日报（云端部署避免超时）
     report_files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
@@ -184,16 +184,12 @@ def api_daily():
             with open(report_files[0], "r", encoding="utf-8") as f:
                 html = f.read()
             date_str = os.path.basename(report_files[0]).replace("daily-6s-", "").replace(".html", "")
-            # 同时尝试加载对应日期的 repos 到缓存（供自定义查询用）
-            if not _cached_report.get("repos"):
-                try:
-                    _run_pipeline()
-                except Exception:
-                    pass  # 后台抓取失败不影响展示预生成报告
+            # 不再触发 _run_pipeline（避免每次访问都跑完整抓取导致超时）
+            # 自定义查询需要 repos 时，由 /api/custom 按需触发
             return jsonify({"date": date_str, "html": html})
         except Exception as e:
             logger.warning(f"Failed to read pre-generated report: {e}, falling back to live fetch")
-    # 降级：实时抓取
+    # 降级：实时抓取（仅在无预生成文件时）
     try:
         report = _run_pipeline()
         return jsonify({"date": report["date"], "html": report["content"]})
@@ -239,11 +235,13 @@ def api_ai():
 def api_custom():
     """自定义话题日报 — 解析查询 + 匹配仓库 + 生成报告
 
-    支持用户传入自己的 DeepSeek API Key（个人化，不消耗项目方额度）
+    支持用户传入自己的 LLM API Key + provider（个人化，不消耗项目方额度）
+    兼容多家厂商：deepseek/openai/anthropic/qwen/zhipu/moonshot
     """
     data = request.json or {}
     query = (data.get("query", "") or request.args.get("query", "")).strip()
     api_key = (data.get("api_key", "") or "").strip()  # 用户自己的 key（可选）
+    provider = (data.get("provider", "") or "").strip()  # 厂商（可选，自动识别）
     if not query:
         return jsonify({"html": '<p style="color:var(--text-dim);text-align:center;padding:40px">'
                                 '请输入话题关键词，例如：量化交易、AI Agent、游戏引擎</p>', "topic": ""})
@@ -262,8 +260,8 @@ def api_custom():
 
     try:
         # 4 层防御解析（用用户自己的 key，不消耗项目方额度）
-        parsed = parse_query(query, api_key)
-        sections = generate_sections(parsed.get("topic", query), parsed.get("keywords", []), api_key)
+        parsed = parse_query(query, api_key, provider)
+        sections = generate_sections(parsed.get("topic", query), parsed.get("keywords", []), api_key, provider)
         # 基础模块热门项目作为补充源（项目不足时去重补充）
         basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
         html = generate_custom_report(repos, query, parsed, sections, basic_repos=basic_repos)
@@ -310,11 +308,13 @@ def api_subscribe():
         topic = data.get("topic", "").strip()
         keywords = data.get("keywords", [])
         api_key = (data.get("api_key", "") or "").strip()
+        provider = (data.get("provider", "") or "").strip()
         if not topic or not keywords:
             return jsonify({"ok": False, "msg": "自定义订阅需要 topic 和 keywords"}), 400
         subscription["topic"] = topic
         subscription["keywords"] = keywords
         subscription["api_key"] = api_key  # 存仓库文件（用户选择）
+        subscription["provider"] = provider
 
     # 持久化到 data/subscription.json
     sub_path = os.path.join(_BASE_DIR, "data", "subscription.json")
@@ -365,14 +365,15 @@ def send_subscription_email(subscription: dict):
             topic = subscription.get("topic", "自定义")
             keywords = subscription.get("keywords", [])
             api_key = subscription.get("api_key", "")
+            provider = subscription.get("provider", "")
             repos = _cached_report.get("repos", [])
             if not repos:
                 _run_pipeline()
                 repos = _cached_report.get("repos", [])
-            parsed = parse_query(topic, api_key)
+            parsed = parse_query(topic, api_key, provider)
             if not parsed.get("keywords"):
                 parsed["keywords"] = keywords
-            sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key)
+            sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key, provider)
             basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
             html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
             subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {datetime.utcnow().strftime('%Y-%m-%d')}"
@@ -419,11 +420,26 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
         </div>
         <div style="max-width:600px;margin:0 auto 16px;">
             <details style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
-                <summary style="cursor:pointer;color:var(--text-dim);font-size:0.85em">🔑 DeepSeek API Key（可选，填了可用 LLM 解析冷门话题，用你自己的额度）</summary>
+                <summary style="cursor:pointer;color:var(--text-dim);font-size:0.85em">🔑 LLM API Key（可选，填了可用 LLM 解析冷门话题，用你自己的额度）</summary>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <label style="color:var(--text-dim);font-size:0.85em;min-width:60px">厂商</label>
+                    <select id="customProvider" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85em"
+                            onchange="localStorage.setItem('llm_provider', this.value)">
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic Claude</option>
+                        <option value="qwen">通义千问</option>
+                        <option value="zhipu">智谱清言</option>
+                        <option value="moonshot">Moonshot Kimi</option>
+                    </select>
+                </div>
                 <input type="password" id="customApiKey" placeholder="sk-xxxx...（留空则只用规则匹配，不消耗任何额度）"
                        style="width:100%;margin-top:8px;padding:8px 12px;border-radius:6px;border:1px solid var(--border);
                               background:var(--bg);color:var(--text);font-size:0.85em"
-                       oninput="localStorage.setItem('ds_api_key', this.value)">
+                       oninput="localStorage.setItem('llm_api_key', this.value)">
+                <p style="color:var(--text-dim);font-size:0.75em;margin-top:6px;margin-bottom:0">
+                    💡 填了 key 后浏览器会自动记住，下次访问无需重新填写。支持 DeepSeek/OpenAI/Claude/通义/智谱/Kimi。
+                </p>
             </details>
         </div>
         <div style="max-width:600px;margin:0 auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
@@ -648,20 +664,28 @@ function switchTab(mode) {{
     }} else if (mode === 'custom') {{
         document.getElementById('content').innerHTML = `{custom_placeholder}`;
         var apiKeyInput = document.getElementById('customApiKey');
-        if (apiKeyInput) apiKeyInput.value = localStorage.getItem('ds_api_key') || '';
+        var providerSelect = document.getElementById('customProvider');
+        if (apiKeyInput) {{
+            // 兼容旧 key 名 ds_api_key
+            apiKeyInput.value = localStorage.getItem('llm_api_key') || localStorage.getItem('ds_api_key') || '';
+        }}
+        if (providerSelect) {{
+            providerSelect.value = localStorage.getItem('llm_provider') || 'deepseek';
+        }}
     }}
 }}
 
 function submitCustom() {{
     var q = document.getElementById('customQuery').value.trim();
     if (!q) {{ alert('请输入话题关键词'); return; }}
-    var apiKey = localStorage.getItem('ds_api_key') || '';
+    var apiKey = localStorage.getItem('llm_api_key') || localStorage.getItem('ds_api_key') || '';
+    var provider = localStorage.getItem('llm_provider') || 'deepseek';
     var resultDiv = document.getElementById('customResult');
     resultDiv.innerHTML = '<p style="text-align:center;color:var(--text-dim);padding:30px">🔍 正在解析「' + q + '」并生成日报...</p>';
     fetch('/api/custom', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
-        body: JSON.stringify({{query: q, api_key: apiKey}})
+        body: JSON.stringify({{query: q, api_key: apiKey, provider: provider}})
     }})
     .then(r => r.json())
     .then(data => {{
@@ -712,7 +736,8 @@ function confirmSubscribe() {{
     if (type === 'custom') {{
         body.topic = lastCustomTopic;
         body.keywords = lastCustomKeywords;
-        body.api_key = localStorage.getItem('ds_api_key') || '';
+        body.api_key = localStorage.getItem('llm_api_key') || localStorage.getItem('ds_api_key') || '';
+        body.provider = localStorage.getItem('llm_provider') || 'deepseek';
     }}
     fetch('/api/subscribe', {{
         method: 'POST',

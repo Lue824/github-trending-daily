@@ -4,6 +4,7 @@
 策略：规则优先 → LLM 兜底 → 降级防护（4 层防御体系）
 
 支持传入用户自己的 api_key（自定义模块个人化，不消耗项目方额度）
+兼容多家厂商：DeepSeek / OpenAI / Anthropic / 通义千问 / 智谱 / Moonshot / 自定义
 """
 import json
 import logging
@@ -20,6 +21,59 @@ DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 _INVALID_KEYS = ("", "sk-xxxxxxxxxxxx", "sk-xxx")
 
 
+# ── 多厂商 API 配置 ────────────────────────────────
+# 大部分国内厂商都兼容 OpenAI 格式，只是 endpoint 和 model 不同
+_PROVIDER_CONFIG = {
+    "deepseek": {
+        "url": "https://api.deepseek.com/v1/chat/completions",
+        "model": "deepseek-chat",
+        "name": "DeepSeek",
+    },
+    "openai": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "model": "gpt-4o-mini",
+        "name": "OpenAI",
+    },
+    "anthropic": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "model": "claude-3-5-haiku-20241022",
+        "name": "Anthropic Claude",
+        "format": "anthropic",  # 特殊格式
+    },
+    "qwen": {
+        "url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "model": "qwen-turbo",
+        "name": "通义千问",
+    },
+    "zhipu": {
+        "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+        "model": "glm-4-flash",
+        "name": "智谱清言",
+    },
+    "moonshot": {
+        "url": "https://api.moonshot.cn/v1/chat/completions",
+        "model": "moonshot-v1-8k",
+        "name": "Moonshot Kimi",
+    },
+}
+
+
+def _detect_provider(api_key: str, provider: str = "") -> str:
+    """根据 key 前缀或显式 provider 参数判断厂商"""
+    p = (provider or "").lower().strip()
+    if p in _PROVIDER_CONFIG:
+        return p
+    # 自动识别
+    k = (api_key or "").lower()
+    if k.startswith("sk-or-"):
+        return "openai"
+    if k.startswith("sk-ant-"):
+        return "anthropic"
+    if k.startswith("sk-"):  # DeepSeek 默认
+        return "deepseek"
+    return "deepseek"  # 默认
+
+
 def _resolve_key(api_key: str = "") -> str:
     """解析有效 key：仅使用传入的 key，不降级到环境变量
 
@@ -33,6 +87,68 @@ def _resolve_key(api_key: str = "") -> str:
 
 def _has_llm(api_key: str = "") -> bool:
     return bool(_resolve_key(api_key))
+
+
+def _call_llm(prompt: str, system: str, api_key: str, provider: str = "",
+              max_tokens: int = 500, temperature: float = 0.1) -> str | None:
+    """统一调用 LLM，返回 content 字符串
+
+    支持 OpenAI 兼容格式 + Anthropic 特殊格式
+    """
+    key = _resolve_key(api_key)
+    if not key:
+        return None
+
+    prov = _detect_provider(api_key, provider)
+    cfg = _PROVIDER_CONFIG.get(prov, _PROVIDER_CONFIG["deepseek"])
+
+    try:
+        if cfg.get("format") == "anthropic":
+            # Anthropic 特殊格式
+            resp = requests.post(
+                cfg["url"],
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": cfg["model"],
+                    "max_tokens": max_tokens,
+                    "system": system,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["content"][0]["text"]
+        else:
+            # OpenAI 兼容格式（DeepSeek/通义/智谱/Moonshot 等）
+            resp = requests.post(
+                cfg["url"],
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": cfg["model"],
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        logger.warning(f"LLM call failed ({cfg['name']}): {e}")
+        return None
 
 
 # ── 第一层：规则匹配 ──────────────────────────────────
@@ -90,10 +206,9 @@ def _rule_parse(query: str) -> dict | None:
 
 # ── 第二层：LLM 解析 ────────────────────────────────
 
-def _llm_parse(query: str, api_key: str = "") -> dict | None:
-    """用 DeepSeek 解析自然语言 → 结构化查询条件（使用传入的 key）"""
-    key = _resolve_key(api_key)
-    if not key:
+def _llm_parse(query: str, api_key: str = "", provider: str = "") -> dict | None:
+    """用 LLM 解析自然语言 → 结构化查询条件（使用传入的 key）"""
+    if not _has_llm(api_key):
         return None
 
     prompt = f"""你是一个技术话题解析器。将用户输入转换为 JSON 查询条件。
@@ -116,38 +231,26 @@ def _llm_parse(query: str, api_key: str = "") -> dict | None:
 3. 不确定的字段用 null
 4. min_stars 默认 50"""
 
-    try:
-        resp = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": "你是一个 JSON 解析器，只输出合法 JSON。"},
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": 500,
-                "temperature": 0.1,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+    content = _call_llm(
+        prompt=prompt,
+        system="你是一个 JSON 解析器，只输出合法 JSON。",
+        api_key=api_key,
+        provider=provider,
+        max_tokens=500,
+        temperature=0.1,
+    )
+    if not content:
+        return None
 
+    try:
         # JSON 修复：去掉可能的 markdown 代码块
         content = re.sub(r"^```json\s*", "", content.strip())
         content = re.sub(r"\s*```$", "", content.strip())
-
         result = json.loads(content)
         result["source"] = "llm"
         return result
     except Exception as e:
-        logger.warning(f"LLM parse failed: {e}")
+        logger.warning(f"LLM parse JSON decode failed: {e}")
         return None
 
 
@@ -178,7 +281,7 @@ def _fallback_parse(query: str) -> dict:
     }
 
 
-def parse_query(query: str, api_key: str = "") -> dict:
+def parse_query(query: str, api_key: str = "", provider: str = "") -> dict:
     """
     解析用户查询，返回结构化条件
 
@@ -190,7 +293,8 @@ def parse_query(query: str, api_key: str = "") -> dict:
 
     Args:
         query: 用户输入的话题
-        api_key: 用户自己的 DeepSeek API Key（可选，不传则只用规则匹配）
+        api_key: 用户自己的 LLM API Key（可选，不传则只用规则匹配）
+        provider: LLM 厂商（deepseek/openai/anthropic/qwen/zhipu/moonshot，可选，自动识别）
     """
     # 第 1 层：规则
     result = _rule_parse(query)
@@ -199,7 +303,7 @@ def parse_query(query: str, api_key: str = "") -> dict:
         return result
 
     # 第 2 层：LLM（用用户自己的 key）
-    result = _llm_parse(query, api_key)
+    result = _llm_parse(query, api_key, provider)
     if result:
         logger.info(f"Query parsed by LLM: {result.get('topic', query[:15])}")
         return result
@@ -227,17 +331,18 @@ def _meta_sections(topic: str) -> dict:
     }
 
 
-def generate_sections(topic: str, keywords: list[str], api_key: str = "") -> dict:
+def generate_sections(topic: str, keywords: list[str], api_key: str = "",
+                      provider: str = "") -> dict:
     """
     LLM 动态生成自定义板块定义
 
     Args:
         topic: 话题名
         keywords: 关键词列表
-        api_key: 用户自己的 DeepSeek API Key（可选，不传则用元模板）
+        api_key: 用户自己的 LLM API Key（可选，不传则用元模板）
+        provider: LLM 厂商（可选）
     """
-    key = _resolve_key(api_key)
-    if not key:
+    if not _has_llm(api_key):
         return _meta_sections(topic)
 
     prompt = f"""为用户话题"{topic}"（关键词：{', '.join(keywords[:8])}）设计 4 个日报板块。
@@ -264,31 +369,21 @@ def generate_sections(topic: str, keywords: list[str], api_key: str = "") -> dic
 - 必须返回 4 个板块
 - 最后一个板块必须是 dashboard 类型（统计数据）"""
 
+    content = _call_llm(
+        prompt=prompt,
+        system="你是 JSON 生成器，只输出合法 JSON。",
+        api_key=api_key,
+        provider=provider,
+        max_tokens=800,
+        temperature=0.2,
+    )
+    if not content:
+        return _meta_sections(topic)
+
     try:
-        resp = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": [
-                    {"role": "system", "content": "你是 JSON 生成器，只输出合法 JSON。"},
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": 800,
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
         content = re.sub(r"^```json\s*", "", content.strip())
         content = re.sub(r"\s*```$", "", content.strip())
         return json.loads(content)
     except Exception as e:
-        logger.warning(f"LLM section generation failed: {e}")
-        return _meta_sections(topic)  # 修复：用元模板兜底，不再递归
+        logger.warning(f"LLM section generation JSON decode failed: {e}")
+        return _meta_sections(topic)

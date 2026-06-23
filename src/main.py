@@ -204,11 +204,12 @@ def _send_email_by_subscription(
             topic = subscription.get("topic", "自定义")
             keywords = subscription.get("keywords", [])
             api_key = subscription.get("api_key", "")
+            provider = subscription.get("provider", "")
             logger.info(f"Sending CUSTOM report: {topic} (keywords={keywords[:3]})")
-            parsed = parse_query(topic, api_key)
+            parsed = parse_query(topic, api_key, provider)
             if not parsed.get("keywords"):
                 parsed["keywords"] = keywords
-            sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key)
+            sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key, provider)
             basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
             html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
             # 保存报告文件
@@ -275,11 +276,14 @@ def run_daily():
 
     # ── AI 深度日报 ────────────────────────────────────
     logger.info("Step 10.5: Generating AI deep-dive report...")
-    focus_repos = compute_ai_scores(repos, extra_cache)
-    ai_sections = get_ai_section_repos(focus_repos)
-    ai_html = generate_ai_report(focus_repos, ai_sections, TODAY)
-    ai_path = save_ai_report(ai_html, TODAY)
-    logger.info(f"AI report saved: {ai_path}")
+    try:
+        focus_repos = compute_ai_scores(repos, extra_cache)
+        ai_sections = get_ai_section_repos(focus_repos)
+        ai_html = generate_ai_report(focus_repos, ai_sections, TODAY)
+        ai_path = save_ai_report(ai_html, TODAY)
+        logger.info(f"AI report saved: {ai_path}")
+    except Exception as e:
+        logger.warning(f"AI report generation failed (skipped): {e}")
 
     # ── 保存摘要 ───────────────────────────────────────
     save_daily_summary(TODAY, repos, report_path)
