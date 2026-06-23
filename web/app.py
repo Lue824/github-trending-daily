@@ -229,6 +229,11 @@ def api_subscribe():
         # 响应中不返回完整 subscription（含 api_key）
         safe_response = {k: v for k, v in subscription.items() if k != "api_key"}
         return jsonify({"ok": True, "msg": f"订阅成功！已发送{('自定义' if sub_type == 'custom' else '基础')}日报", "subscription": safe_response})
+    except OSError as e:
+        # PythonAnywhere 免费版封锁 SMTP 端口，属正常情况
+        logger.warning(f"Email sending skipped (SMTP blocked in this environment): {e}")
+        safe_response = {k: v for k, v in subscription.items() if k != "api_key"}
+        return jsonify({"ok": True, "msg": "订阅成功！邮件将由定时任务自动推送", "subscription": safe_response})
     except Exception as e:
         logger.error(f"Send subscription email failed: {e}", exc_info=True)
         safe_response = {k: v for k, v in subscription.items() if k != "api_key"}
