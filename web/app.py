@@ -208,29 +208,6 @@ def api_refresh():
     return jsonify({"ok": True, "date": report["date"]})
 
 
-@app.route("/api/ai")
-def api_ai():
-    """获取 AI 深度日报（读取已生成的 ai-*.html）"""
-    import glob
-    ai_files = sorted(glob.glob(os.path.join(_REPORT_DIR, "ai-*.html")), reverse=True)
-    if not ai_files:
-        return jsonify({
-            "html": '<div style="text-align:center;padding:60px 20px;color:var(--text-dim)">'
-                    '<p style="font-size:1.2em;margin-bottom:12px">AI 深度日报尚未生成</p>'
-                    '<p>请先运行 <code style="background:var(--bg-card);padding:2px 6px;border-radius:4px">'
-                    'python src/main.py</code> 生成当日日报</p></div>',
-            "date": ""
-        })
-    try:
-        with open(ai_files[0], "r", encoding="utf-8") as f:
-            html = f.read()
-        date_str = os.path.basename(ai_files[0]).replace("ai-", "").replace(".html", "")
-        return jsonify({"html": html, "date": date_str})
-    except Exception as e:
-        logger.error(f"Failed to read AI report: {e}")
-        return jsonify({"html": f'<p style="color:var(--accent-red)">读取 AI 日报失败: {e}</p>', "date": ""}), 500
-
-
 @app.route("/api/custom", methods=["GET", "POST"])
 def api_custom():
     """自定义话题日报 — 解析查询 + 匹配仓库 + 生成报告
@@ -392,7 +369,6 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
     """渲染主页面"""
     tabs = [
         {"id": "basic", "label": "📊 基础日报", "desc": "6板块多维评价"},
-        {"id": "ai", "label": "🤖 AI 深度", "desc": "AI/ML 垂类分析"},
         {"id": "custom", "label": "🔧 自定义", "desc": "输入话题生成专属日报"},
     ]
     tabs_html = ""
@@ -405,18 +381,12 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
             f'</button>'
         )
 
-    ai_placeholder = """
-    <div style="text-align:center;padding:40px 20px;color:var(--text-dim)">
-        <p style="font-size:1.1em;margin-bottom:8px">🤖 正在加载 AI 深度日报...</p>
-        <p>聚焦 AI/ML/大模型/Agent 等领域的深度分析</p>
-    </div>
-    """
-
     custom_placeholder = """
     <div style="padding:30px 20px;">
         <div style="text-align:center;margin-bottom:20px;color:var(--text-dim)">
             <p style="font-size:1.1em;margin-bottom:8px">🔧 自定义话题日报</p>
-            <p>输入你关注的话题，AI 将生成专属日报（支持 32 个话题模板 + LLM 动态解析）</p>
+            <p>输入你关注的话题，AI 将生成专属日报（支持 32 个话题模板 + LLM 动态解析）<br>
+            <small style="color:var(--accent)">💡 AI/ML 相关话题（如「大模型」「AI Agent」）会调用 AI 垂类评分引擎，深度分析模型权重、Agent工具链、数据评测等维度</small></p>
         </div>
         <div style="max-width:600px;margin:0 auto 16px;">
             <details style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
@@ -612,7 +582,11 @@ body {{
 </head>
 <body>
 <div class="top-bar">
-    <h1>🚀 GitHub 每日热点</h1>
+        <div style="display:flex;align-items:center;gap:12px">
+            <span class="brand-icon">🚀</span>
+            <h1 style="font-size:1.4em;margin:0;color:var(--text)">GitHub 每日热点</h1>
+            <span style="color:var(--text-dim);font-size:0.8em">基础日报 + 自定义话题</span>
+        </div>
     <div class="actions">
         <span id="reportDate" style="color:var(--text-dim);font-size:0.85em"></span>
         <button class="btn btn-primary" onclick="refreshData()">🔄 刷新数据</button>
@@ -646,19 +620,6 @@ function switchTab(mode) {{
             }})
             .catch(e => {{
                 document.getElementById('content').innerHTML = '<p style="color:#f85149">加载失败: ' + e + '</p>';
-                hideSpinner();
-            }});
-    }} else if (mode === 'ai') {{
-        showSpinner();
-        fetch('/api/ai')
-            .then(r => r.json())
-            .then(data => {{
-                document.getElementById('content').innerHTML = data.html;
-                if (data.date) document.getElementById('reportDate').textContent = '🤖 AI日报 ' + data.date;
-                hideSpinner();
-            }})
-            .catch(e => {{
-                document.getElementById('content').innerHTML = '<p style="color:#f85149">AI日报加载失败: ' + e + '</p>';
                 hideSpinner();
             }});
     }} else if (mode === 'custom') {{

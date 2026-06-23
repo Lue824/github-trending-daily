@@ -29,9 +29,7 @@ from src.reporter.markdown import (
     generate_daily_report, generate_monthly_report, save_report,
 )
 from src.reporter.daily_report import generate_6section_report, save_6section_report
-from src.reporter.ai_report import generate_ai_report, save_ai_report
 from src.reporter.custom_report import generate_custom_report
-from src.processor.ai_scoring import compute_ai_scores, get_ai_section_repos
 from src.processor.custom_parser import parse_query, generate_sections
 from src.notifier.email_sender import send_email, markdown_to_html
 from config import EMAIL_CONFIG, REPORTS_DIR
@@ -274,22 +272,11 @@ def run_daily():
     )
     logger.info(f"6-section report saved: {html_path}")
 
-    # ── AI 深度日报 ────────────────────────────────────
-    logger.info("Step 10.5: Generating AI deep-dive report...")
-    try:
-        focus_repos = compute_ai_scores(repos, extra_cache)
-        ai_sections = get_ai_section_repos(focus_repos)
-        ai_html = generate_ai_report(focus_repos, ai_sections, TODAY)
-        ai_path = save_ai_report(ai_html, TODAY)
-        logger.info(f"AI report saved: {ai_path}")
-    except Exception as e:
-        logger.warning(f"AI report generation failed (skipped): {e}")
-
     # ── 保存摘要 ───────────────────────────────────────
     save_daily_summary(TODAY, repos, report_path)
 
     # ── 发送邮件（根据订阅类型） ────────────────────
-    logger.info("Step 11: Sending email based on subscription...")
+    logger.info("Step 10: Sending email based on subscription...")
     _send_email_by_subscription(
         repos, readme_cache, llm_analyses, trend_analysis,
         yesterday_ranks, extra_cache,
@@ -300,7 +287,7 @@ def run_daily():
         run_monthly()
 
     # ── 清理旧数据 ─────────────────────────────────────
-    logger.info("Step 12: Cleaning up old data...")
+    logger.info("Step 11: Cleaning up old data...")
     cleanup_old_data()
 
     logger.info(f"=== Daily run complete: {TODAY} ===")

@@ -14,9 +14,8 @@
 | 功能 | 说明 |
 |------|------|
 | 📊 **基础日报（6板块）** | 🧨爆发 / 🏆质量标杆 / 🌱潜力新星 / ⚠️热度陷阱 / 🤖AI雷达 / 📊数据看板 |
-| 🤖 **AI 深度日报（5板块）** | 🧠模型权重 / 🔧Agent工具链 / 📊数据评测 / ⚡爆发信号 / ⚠️风险关注 |
-| 🔧 **自定义日报** | 输入任意话题 → AI 自动解析 → 生成专属日报（32个话题模板 + LLM 动态板块） |
-| 📧 **邮件推送** | 每日自动推送 6 板块日报到 QQ 邮箱 |
+| 🔧 **自定义日报** | 输入任意话题 → 自动生成专属日报（32话题模板 + 多厂商LLM动态解析）。AI话题自动调用垂类评分引擎 |
+| 📧 **邮件推送** | 每日自动推送日报到邮箱，支持基础/自定义类型切换 |
 | 🎨 **Web 交互** | 深色主题、TAB 切换、秒开响应、响应式布局 |
 
 ### 面向谁
@@ -104,12 +103,10 @@ python -B src/main.py --web
 |------|------|------|
 | 增强数据抓取 | `src/fetcher/extra_api.py` | GitHub API 7 维度数据采集 |
 | 多维评分系统 | `src/processor/scoring.py` | 5 子维度 + 6 大板块评分公式 |
-| AI 垂类评分 | `src/processor/ai_scoring.py` | AI 模型/Agent/数据/预警 4 维度评分 |
 | 6板块日报 | `src/reporter/daily_report.py` | 深色主题 HTML 日报 |
-| AI 深度日报 | `src/reporter/ai_report.py` | AI 垂类 5 板块日报 + 趋势看板 |
 | 自定义解析器 | `src/processor/custom_parser.py` | 自然语言 → 结构化查询（规则+LLM+降级） |
 | 自定义日报 | `src/reporter/custom_report.py` | 动态板块 HTML 生成 |
-| Web 服务器 | `web/app.py` | Flask 服务 + 3 TAB 切换 + 自定义 API |
+| Web 服务器 | `web/app.py` | Flask 服务 + 2 TAB 切换 + 自定义 API |
 | 数据库迁移 | `src/storage/db.py` | 7 个新字段 + 自动迁移 |
 | 主流程集成 | `src/main.py` | Pipeline 串联 + 邮件推送 |
 
@@ -133,15 +130,15 @@ python -B src/main.py --web
 ### 核心架构亮点
 
 ```
-用户浏览器（3 TAB）
+用户浏览器（2 TAB）
   │
   ├─ TAB 1: 基础日报 ← 6板块评分引擎 → 7维健康度数据
-  ├─ TAB 2: AI 深度   ← AI垂直评分引擎 → 96个AI项目分类
-  └─ TAB 3: 自定义    ← 自然语言解析器 → 32话题模板 + LLM
+  └─ TAB 2: 自定义  ← 自然语言解析器 → 32话题模板 + 多厂商LLM
        │
-       └─ 输入"量化交易" → 规则匹配 → 关键词筛选 → 动态板块 → 日报
-       └─ 输入新颖话题 → LLM解析 → json_object → 动态板块生成 → 日报
-       └─ LLM失败     → 关键词降级 → 元模板兜底 → 日报
+       └─ 输入"量化交易" → 规则匹配（毫秒级）→ 金融日报
+       └─ 输入"大模型"   → AI垂类评分引擎 → 模型/Agent/评测维度的AI日报
+       └─ 输入新颖话题   → LLM解析 + json_object → 动态板块生成
+       └─ LLM失败       → 关键词降级 → 元模板兜底
 ```
 
 ### 关键技术决策
@@ -167,7 +164,6 @@ python -B src/main.py --web
 | 新增/修改文件 | 10+ 个，~2500 行 |
 | 健康度维度 | 7 个（issues/PR/contributors/releases/commits/activity/maturity） |
 | 基础日报板块 | 6 个 |
-| AI 垂类板块 | 5 个 |
 | 自定义话题模板 | 32 个 |
 | 每日分析仓库 | 170+ |
 | DeepSeek 分析 | 30 个项目/天 |
