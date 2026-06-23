@@ -1,12 +1,15 @@
 """
 自定义日报 HTML 生成器
-根据用户查询动态生成板块，含多维度项目解读
+根据用户查询动态生成板块，含多维度项目解读 + 三级降级补充
 """
+import logging
 import os
 from collections import Counter
 from datetime import datetime
 
 from config import REPORTS_DIR
+
+logger = logging.getLogger(__name__)
 
 
 def _match_repo(repo: dict, keywords: list[str], exclude: list[str],
@@ -151,7 +154,7 @@ def _gen_dimensions(repo: dict) -> list[dict]:
 
 
 def _card(repo: dict, idx: int) -> str:
-    """生成项目卡片（含多维度解读）"""
+    """生成项目卡片（含多维度解读 + 来源标注）"""
     stars = repo.get("stars", 0)
     inc = repo.get("stars_in_period", 0) or 0
     lang = repo.get("language", "Unknown")
@@ -160,6 +163,22 @@ def _card(repo: dict, idx: int) -> str:
     extra = _get_extra(repo)
     quality = repo.get("quality_score", 0)
     hot = repo.get("hot_score", 0)
+    source_note = repo.get("_source_note", "")
+
+    # 来源标注横幅
+    source_banner = ""
+    if source_note == "high_value":
+        source_banner = (
+            '<div class="source-banner source-high-value">'
+            '💎 长期价值项目 · 这不是近期热门，而是具有长期价值的高价值项目'
+            '</div>'
+        )
+    elif source_note == "basic_top":
+        source_banner = (
+            '<div class="source-banner source-basic-top">'
+            '📌 基础模块高排名 · 此项目来源于基础模块领域的高排名项目'
+            '</div>'
+        )
 
     # 多维度解读
     dims = _gen_dimensions(repo)
@@ -196,6 +215,7 @@ def _card(repo: dict, idx: int) -> str:
     )
 
     return f"""<div class="repo-card custom-card">
+{source_banner}
 <div class="repo-header">
 <span class="repo-rank">#{idx}</span>
 <a href="{repo['url']}" target="_blank" class="repo-name">{repo['full_name']}</a>
@@ -238,6 +258,27 @@ def generate_custom_report(
     lang_counter = Counter(r.get("language", "Unknown") for r in matched)
     basic_pool = sorted(basic_repos or [], key=lambda r: r.get("hot_score", 0), reverse=True)
 
+    # === 三级降级补充池 ===
+    # 当今日 Trending 中匹配项目不足时，依次尝试：
+    # 1. GitHub Search API 搜索高 Star 长期价值项目
+    # 2. 基础模块高排名项目
+    high_value_pool = []
+    if len(matched) < min_threshold:
+        try:
+            from src.fetcher.search_api import search_high_value_repos
+            logger.info(f"Custom match insufficient ({len(matched)}), searching high-value repos...")
+            high_value_pool = search_high_value_repos(keywords, per_page=15)
+            for r in high_value_pool:
+                r["_source_note"] = "high_value"
+            logger.info(f"High-value repos found: {len(high_value_pool)}")
+        except Exception as e:
+            logger.warning(f"High-value search failed: {e}")
+
+    # 为基础模块补充池标注来源
+    for r in basic_pool:
+        if not r.get("_source_note"):
+            r["_source_note"] = "basic_top"
+
     sec_repos = {}
     used_full_names = set()
     for sec in sec_defs:
@@ -266,6 +307,17 @@ def generate_custom_report(
             picked.append(r)
             used_full_names.add(r["full_name"])
 
+        # 三级降级补充
+        if len(picked) < min_threshold:
+            # 第一级：高价值长期项目
+            for r in high_value_pool:
+                if len(picked) >= min_threshold:
+                    break
+                if r["full_name"] not in used_full_names:
+                    picked.append(r)
+                    used_full_names.add(r["full_name"])
+
+        # 第二级：基础模块高排名项目
         if len(picked) < min_threshold and basic_pool:
             for r in basic_pool:
                 if len(picked) >= min_threshold:
@@ -336,10 +388,31 @@ def generate_custom_report(
     total_custom = len(matched)
     total_shown = sum(len(v) for v in sec_repos.values())
     supplemented = max(0, total_shown - total_custom) if total_custom < total_shown else 0
+    high_value_count = sum(1 for v in sec_repos.values() for r in v if r.get("_source_note") == "high_value")
+    basic_top_count = sum(1 for v in sec_repos.values() for r in v if r.get("_source_note") == "basic_top")
 
     supplement_note = ""
     if supplemented > 0:
-        supplement_note = f'<div class="summary-item"><span class="num">{supplemented}</span><span class="label">基础补充</span></div>'
+        supplement_parts = [f'<span class="num">{supplemented}</span><span class="label">补充项目</span>']
+        if high_value_count:
+            supplement_parts.append(f'<span class="num">{high_value_count}</span><span class="label">💎 高价值</span>')
+        if basic_top_count:
+            supplement_parts.append(f'<span class="num">{basic_top_count}</span><span class="label">📌 基础高排名</span>')
+        supplement_note = "".join(f'<div class="summary-item">{p}</div>' for p in supplement_parts)
+
+    # 降级提示横幅
+    fallback_banner = ""
+    if supplemented > 0:
+        banner_parts = []
+        if high_value_count:
+            banner_parts.append(f"💎 {high_value_count} 个长期价值高 Star 项目（非近期热门）")
+        if basic_top_count:
+            banner_parts.append(f"📌 {basic_top_count} 个基础模块高排名项目")
+        fallback_banner = (
+            f'<div class="fallback-banner">'
+            f'ℹ️ 今日 Trending 中匹配项目不足，已为你补充：{" · ".join(banner_parts)}'
+            f'</div>'
+        )
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -348,6 +421,7 @@ def generate_custom_report(
 <h1>🔧 自定义日报 <span class="date">— {topic}</span></h1>
 <div class="report-meta">生成时间 {now} · 解析来源 {source}</div>
 </div>
+{fallback_banner}
 <div class="summary-bar">
 <div class="summary-item"><span class="num">{len(matched)}</span><span class="label">匹配项目</span></div>
 <div class="summary-item"><span class="num">{total_shown}</span><span class="label">展示项目</span></div>
@@ -357,7 +431,7 @@ def generate_custom_report(
 
 {"".join(sections_html)}
 
-<footer>📬 自定义报告由 GitHub Trending Daily Bot 生成{('（部分板块由基础日报补充）' if supplemented > 0 else '')}</footer>
+<footer>📬 自定义报告由 GitHub Trending Daily Bot 生成{('（含补充项目）' if supplemented > 0 else '')}</footer>
 </div>"""
 
 

@@ -112,6 +112,53 @@ def fetch_all_api() -> list[dict]:
     return all_repos
 
 
+def search_high_value_repos(keywords: list[str], per_page: int = 15) -> list[dict]:
+    """搜索具有长期价值的高 Star 项目（非近期热门）
+
+    筛选条件：
+    - Star >= 1000（高价值门槛）
+    - 最近一年内有更新（仍在维护）
+    - 按 Star 数降序（保证质量）
+
+    Args:
+        keywords: 搜索关键词列表
+        per_page: 返回数量
+
+    Returns:
+        高价值项目列表，每个项目带 _source_note 字段标注来源
+    """
+    if not keywords:
+        return []
+
+    # 构建查询：关键词 OR 组合 + stars 门槛 + pushed 最近一年
+    kw_query = " OR ".join(keywords[:5])
+    q = f"{kw_query} stars:>1000 pushed:>2025-01-01"
+
+    url = f"{API_BASE}/search/repositories"
+    params = {
+        "q": q,
+        "sort": "stars",
+        "order": "desc",
+        "per_page": per_page,
+    }
+    data = _api_get(url, params)
+    if not data or "items" not in data:
+        # 降级：去掉时间限制重试
+        params["q"] = f"{kw_query} stars:>500"
+        data = _api_get(url, params)
+        if not data or "items" not in data:
+            return []
+
+    repos = []
+    for item in data["items"]:
+        repo = _parse_repo(item, "api/high-value")
+        repo["_source_note"] = "high_value"  # 标注：高价值长期项目
+        repos.append(repo)
+
+    logger.info(f"High-value search [{keywords[:3]}]: found {len(repos)} repos")
+    return repos
+
+
 def fetch_readme(owner: str, name: str) -> str | None:
     """
     获取仓库的 README 内容（前 3000 字符）

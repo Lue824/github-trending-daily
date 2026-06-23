@@ -860,6 +860,33 @@ footer {{
     .summary-item {{ min-width: 80px; padding: 10px 14px; }}
     .summary-item .num {{ font-size: 1.3em; }}
 }}
+.source-banner {{
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.78em;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}}
+.source-high-value {{
+    background: rgba(63, 185, 80, 0.1);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    color: var(--accent-green);
+}}
+.source-basic-top {{
+    background: rgba(255, 159, 28, 0.1);
+    border: 1px solid rgba(255, 159, 28, 0.3);
+    color: #ff9f1c;
+}}
+.fallback-banner {{
+    background: rgba(88, 166, 255, 0.08);
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    color: var(--accent);
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.85em;
+    line-height: 1.6;
+}}
 </style>
 </head>
 <body>
