@@ -578,6 +578,288 @@ body {{
     border-color: var(--accent);
 }}
 .btn-primary:hover {{ opacity: 0.9; }}
+
+/* === 自定义日报样式 === */
+.custom-container {{ max-width: 1100px; margin: 0 auto; }}
+.report-header {{
+    text-align: center;
+    padding: 24px 16px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+}}
+.report-header h1 {{
+    font-size: 1.6em;
+    color: var(--text);
+    margin-bottom: 8px;
+}}
+.report-header .date {{
+    color: var(--accent);
+    font-size: 0.7em;
+    font-weight: normal;
+}}
+.report-meta {{
+    color: var(--text-dim);
+    font-size: 0.8em;
+}}
+.summary-bar {{
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}}
+.summary-item {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 20px;
+    text-align: center;
+    min-width: 100px;
+}}
+.summary-item .num {{
+    display: block;
+    font-size: 1.6em;
+    font-weight: 600;
+    color: var(--accent);
+}}
+.summary-item .label {{
+    display: block;
+    font-size: 0.75em;
+    color: var(--text-dim);
+    margin-top: 4px;
+}}
+.report-section {{
+    margin-bottom: 32px;
+    padding: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}}
+.report-section h2 {{
+    font-size: 1.2em;
+    color: var(--text);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}}
+.report-section .icon {{ font-size: 1.1em; }}
+.report-section .subtitle {{
+    color: var(--text-dim);
+    font-size: 0.85em;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--border);
+}}
+.custom-card {{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all 0.2s;
+}}
+.custom-card:hover {{
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(88, 166, 255, 0.1);
+}}
+.custom-card .repo-header {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}}
+.custom-card .repo-rank {{
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.8em;
+    font-weight: 600;
+}}
+.custom-card .repo-name {{
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1em;
+}}
+.custom-card .repo-name:hover {{ text-decoration: underline; }}
+.custom-card .repo-desc {{
+    color: var(--text);
+    font-size: 0.88em;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}}
+.custom-card .repo-stats {{
+    display: flex;
+    gap: 14px;
+    color: var(--text-dim);
+    font-size: 0.82em;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}}
+.score-badges {{
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}}
+.badge {{
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: 500;
+}}
+.badge-quality {{
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}}
+.badge-hot {{
+    background: rgba(255, 159, 28, 0.15);
+    color: #ff9f1c;
+    border: 1px solid rgba(255, 159, 28, 0.3);
+}}
+.health-bar {{
+    color: var(--text-dim);
+    font-size: 0.78em;
+    padding: 6px 0;
+    border-top: 1px dashed var(--border);
+    margin-bottom: 10px;
+}}
+.tag-bar {{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}}
+.eco-tag {{
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72em;
+    border: 1px solid rgba(88, 166, 255, 0.2);
+}}
+.dimensions {{
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 8px;
+}}
+.dim-title {{
+    color: var(--accent);
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--border);
+}}
+.dim-item {{
+    display: grid;
+    grid-template-columns: 24px 80px 1fr;
+    gap: 8px;
+    align-items: start;
+    padding: 6px 0;
+    font-size: 0.82em;
+    line-height: 1.5;
+}}
+.dim-icon {{ font-size: 1em; }}
+.dim-label {{
+    color: var(--text-dim);
+    font-weight: 500;
+}}
+.dim-text {{
+    color: var(--text);
+    word-break: break-word;
+}}
+.dashboard-block {{
+    padding: 20px;
+}}
+.dashboard-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}}
+.dashboard-item {{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+}}
+.dash-num {{
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--accent);
+}}
+.dash-label {{
+    font-size: 0.78em;
+    color: var(--text-dim);
+    margin-top: 4px;
+}}
+.lang-distribution {{
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+}}
+.lang-distribution h3 {{
+    font-size: 0.95em;
+    color: var(--text);
+    margin-bottom: 12px;
+}}
+.lang-bar-item {{
+    display: grid;
+    grid-template-columns: 80px 1fr 40px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 0.82em;
+}}
+.lang-name {{ color: var(--text); }}
+.lang-bar-bg {{
+    background: var(--bg);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}}
+.lang-bar-fill {{
+    background: linear-gradient(90deg, var(--accent), #79c0ff);
+    height: 100%;
+    transition: width 0.5s;
+}}
+.lang-count {{
+    color: var(--text-dim);
+    text-align: right;
+}}
+.query-info {{
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    font-size: 0.82em;
+    color: var(--text-dim);
+    line-height: 1.7;
+}}
+.query-info strong {{ color: var(--text); }}
+footer {{
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.78em;
+    padding: 24px 16px;
+    border-top: 1px solid var(--border);
+    margin-top: 32px;
+}}
+@media (max-width: 768px) {{
+    .dim-item {{ grid-template-columns: 24px 70px 1fr; gap: 6px; font-size: 0.78em; }}
+    .lang-bar-item {{ grid-template-columns: 60px 1fr 30px; }}
+    .summary-item {{ min-width: 80px; padding: 10px 14px; }}
+    .summary-item .num {{ font-size: 1.3em; }}
+}}
 </style>
 </head>
 <body>
