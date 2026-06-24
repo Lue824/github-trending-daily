@@ -249,7 +249,7 @@ def generate_6section_report(
         sections_html.append(f'<p class="text-sm text-[{DI}] mb-3">{sub}</p>')
         if repos_list:
             for i, r in enumerate(repos_list, 1):
-                card = _repo_card(r, i, section.lower().replace(" ", "_") if not is_trap_section else "trap",
+                card = _repo_card(r, i, title.lower().replace(" ", "_") if not is_trap_section else "trap",
                                   yesterday_ranks, readme_cache, llm_analyses)
                 sections_html.append(card)
 
