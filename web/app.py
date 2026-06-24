@@ -22,7 +22,7 @@ from src.pipeline import run_pipeline
 from src.reporter.daily_report import generate_6section_report, save_6section_report
 from src.processor.custom_parser import parse_query, generate_sections
 from src.reporter.custom_report import generate_custom_report
-from src.storage.db import get_conn
+from src.storage.db import get_conn, get_today_repos
 from src.reporter.daily_report import generate_6section_report
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -92,37 +92,53 @@ def index():
 
 @app.route("/api/daily")
 def api_daily():
-    """异步获取日报数据 — 优先读预生成文件（秒开），无则实时抓取"""
+    """异步获取日报数据 — 优先读预生成文件（秒开），无则提示等待定时任务
+
+    重要：不再触发 run_pipeline()，避免 PythonAnywhere 免费版 100 秒 CPU 超时
+    """
     import glob
-    # 优先读取预生成的 6 板块日报（云端部署避免超时）
+    # 优先读取预生成的 6 板块日报
     report_files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
     if report_files:
         try:
             with open(report_files[0], "r", encoding="utf-8") as f:
                 html = f.read()
             date_str = os.path.basename(report_files[0]).replace("daily-6s-", "").replace(".html", "")
-            # 不再触发 _generate_report（避免每次访问都跑完整抓取导致超时）
-            # 自定义查询需要 repos 时，由 /api/custom 按需触发
             return jsonify({"date": date_str, "html": html})
         except Exception as e:
-            logger.warning(f"Failed to read pre-generated report: {e}, falling back to live fetch")
-    # 降级：实时抓取（仅在无预生成文件时）
-    try:
-        report = _generate_report()
-        return jsonify({"date": report["date"], "html": report["content"]})
-    except Exception as e:
-        logger.error(f"Pipeline failed: {e}", exc_info=True)
-        return jsonify({"date": datetime.utcnow().strftime("%Y-%m-%d"),
-                        "html": f'<p style="color:var(--accent-red);text-align:center;padding:40px">数据加载失败：{e}<br>请检查网络连接后点击刷新按钮重试</p>'}), 500
+            logger.warning(f"Failed to read pre-generated report: {e}")
+
+    # 无预生成文件 — 返回提示（不触发 pipeline，避免超时）
+    return jsonify({
+        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+        "html": '<div style="text-align:center;padding:60px 20px;color:var(--text-dim)">'
+                '<p style="font-size:1.2em;margin-bottom:12px">⏳ 今日日报尚未生成</p>'
+                '<p>日报由定时任务（每天 UTC 00:00）自动生成，请稍后访问</p>'
+                '<p style="margin-top:16px;font-size:0.85em">如需立即生成，请在服务器执行：<code>python src/main.py</code></p>'
+                '</div>'
+    })
 
 
 @app.route("/api/refresh")
 def api_refresh():
-    """强制刷新数据"""
+    """刷新数据 — 清除缓存，重新读取预生成文件（不触发 pipeline，避免超时）
+
+    注意：PythonAnywhere 免费版无法在 Web 请求中运行完整 pipeline（100秒 CPU 限制）
+    数据刷新由 GitHub Actions 定时任务或服务器 cron 完成
+    """
     global _cached_report
     _cached_report = {"content": "", "date": "", "repos": [], "meta": {}}
-    report = _generate_report()
-    return jsonify({"ok": True, "date": report["date"]})
+    import glob
+    report_files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
+    if report_files:
+        try:
+            with open(report_files[0], "r", encoding="utf-8") as f:
+                html = f.read()
+            date_str = os.path.basename(report_files[0]).replace("daily-6s-", "").replace(".html", "")
+            return jsonify({"ok": True, "date": date_str, "html": html})
+        except Exception as e:
+            logger.warning(f"Refresh failed to read report: {e}")
+    return jsonify({"ok": False, "date": "", "msg": "暂无预生成报告，请等待定时任务运行"})
 
 
 @app.route("/api/custom", methods=["GET", "POST"])
@@ -131,6 +147,8 @@ def api_custom():
 
     支持用户传入自己的 LLM API Key + provider（个人化，不消耗项目方额度）
     兼容多家厂商：deepseek/openai/anthropic/qwen/zhipu/moonshot
+
+    重要：从数据库读取 repos，不触发 run_pipeline()，避免 PythonAnywhere 超时
     """
     data = request.json or {}
     query = (data.get("query", "") or request.args.get("query", "")).strip()
@@ -140,17 +158,16 @@ def api_custom():
         return jsonify({"html": '<p style="color:var(--text-dim);text-align:center;padding:40px">'
                                 '请输入话题关键词，例如：量化交易、AI Agent、游戏引擎</p>', "topic": ""})
 
-    # 确保有数据
-    global _cached_report
-    if not _cached_report.get("repos"):
-        try:
-            _generate_report()
-        except Exception as e:
-            return jsonify({"html": f'<p style="color:var(--accent-red)">数据加载失败: {e}</p>', "topic": query}), 500
+    # 从数据库读取当天 repos（不触发 pipeline，避免超时）
+    try:
+        repos = get_today_repos()
+    except Exception as e:
+        logger.error(f"Failed to read repos from DB: {e}", exc_info=True)
+        return jsonify({"html": '<p style="color:var(--accent-red)">数据加载失败，请稍后重试</p>', "topic": "error"}), 500
 
-    repos = _cached_report.get("repos", [])
     if not repos:
-        return jsonify({"html": '<p style="color:var(--text-dim)">暂无数据，请先刷新基础日报</p>', "topic": query})
+        return jsonify({"html": '<p style="color:var(--text-dim);text-align:center;padding:40px">'
+                                '今日数据尚未生成，请先访问基础日报或等待定时任务运行后再试</p>', "topic": query})
 
     try:
         # 4 层防御解析（用用户自己的 key，不消耗项目方额度）
@@ -241,19 +258,19 @@ def api_subscribe():
 
 
 def send_subscription_email(subscription: dict):
-    """根据订阅类型发送对应日报邮件（线程安全，不修改全局配置）"""
+    """根据订阅类型发送对应日报邮件（线程安全，不修改全局配置）
+
+    重要：从数据库读取 repos，不触发 run_pipeline()，避免超时
+    """
     from src.notifier.email_sender import send_email
 
     email = subscription.get("email", "")
     sub_type = subscription.get("type", "basic")
 
     if sub_type == "basic":
-        # 发送基础 6 板块日报
-        if not _cached_report.get("content"):
-            _generate_report()
+        # 发送基础 6 板块日报 — 优先读预生成文件
         html = _cached_report.get("content", "")
         if not html:
-            # 降级读预生成文件
             import glob
             files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
             if files:
@@ -262,15 +279,15 @@ def send_subscription_email(subscription: dict):
         subject = f"🚀 GitHub 每日热点（基础日报）— {datetime.utcnow().strftime('%Y-%m-%d')}"
         send_email(subject, html, receiver=email)
     else:
-        # 发送自定义日报
+        # 发送自定义日报 — 从数据库读取 repos（不触发 pipeline）
         topic = subscription.get("topic", "自定义")
         keywords = subscription.get("keywords", [])
         api_key = subscription.get("api_key", "")
         provider = subscription.get("provider", "")
-        repos = _cached_report.get("repos", [])
+        repos = get_today_repos()
         if not repos:
-            _generate_report()
-            repos = _cached_report.get("repos", [])
+            logger.warning("No repos in DB for custom subscription email, skipping")
+            return
         parsed = parse_query(topic, api_key, provider)
         if not parsed.get("keywords"):
             parsed["keywords"] = keywords
@@ -861,6 +878,20 @@ footer {{
 <script>
 let currentMode = 'basic';
 
+// 带 AbortController 超时的 fetch 封装（PythonAnywhere 免费版 100 秒限制，设 85 秒兜底）
+function fetchWithTimeout(url, options, timeoutMs) {{
+    timeoutMs = timeoutMs || 85000;
+    var controller = new AbortController();
+    var signal = controller.signal;
+    var opts = Object.assign({{}}, options || {{}}, {{ signal: signal }});
+    var timer = setTimeout(function() {{ controller.abort(); }}, timeoutMs);
+    return fetch(url, opts).finally(function() {{ clearTimeout(timer); }});
+}}
+
+function isTimeoutError(e) {{
+    return e && (e.name === 'AbortError' || /timeout|aborted/i.test(String(e)));
+}}
+
 function switchTab(mode) {{
     currentMode = mode;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -868,7 +899,7 @@ function switchTab(mode) {{
 
     if (mode === 'basic') {{
         showSpinner();
-        fetch('/api/daily')
+        fetchWithTimeout('/api/daily')
             .then(r => r.json())
             .then(data => {{
                 document.getElementById('content').innerHTML = data.html;
@@ -876,7 +907,8 @@ function switchTab(mode) {{
                 hideSpinner();
             }})
             .catch(e => {{
-                document.getElementById('content').innerHTML = '<p style="color:#f85149">加载失败: ' + e + '</p>';
+                var msg = isTimeoutError(e) ? '请求超时，请稍后重试' : '加载失败，请检查网络';
+                document.getElementById('content').innerHTML = '<p style="color:#f85149;text-align:center;padding:40px">' + msg + '</p>';
                 hideSpinner();
             }});
     }} else if (mode === 'custom') {{
@@ -900,7 +932,7 @@ function submitCustom() {{
     var provider = localStorage.getItem('llm_provider') || 'deepseek';
     var resultDiv = document.getElementById('customResult');
     resultDiv.innerHTML = '<p style="text-align:center;color:var(--text-dim);padding:30px">🔍 正在解析并生成日报...</p>';
-    fetch('/api/custom', {{
+    fetchWithTimeout('/api/custom', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
         body: JSON.stringify({{query: q, api_key: apiKey, provider: provider}})
@@ -916,7 +948,15 @@ function submitCustom() {{
         }}
     }})
     .catch(e => {{
-        resultDiv.innerHTML = '<p style="color:#f85149">生成失败: ' + e + '</p>';
+        var msg;
+        if (isTimeoutError(e)) {{
+            msg = '⏱️ 生成超时（服务器处理时间过长）。这通常是因为今日数据尚未就绪，请先访问基础日报确认数据已生成后再试。';
+        }} else if (/Failed to fetch|NetworkError/i.test(String(e))) {{
+            msg = '🌐 网络连接失败，请检查网络后重试。如果反复出现，可能是服务器资源受限，请稍后再试。';
+        }} else {{
+            msg = '生成失败: ' + e;
+        }}
+        resultDiv.innerHTML = '<p style="color:#f85149;text-align:center;padding:30px">' + msg + '</p>';
     }});
 }}
 
@@ -957,7 +997,7 @@ function confirmSubscribe() {{
         body.api_key = localStorage.getItem('llm_api_key') || localStorage.getItem('ds_api_key') || '';
         body.provider = localStorage.getItem('llm_provider') || 'deepseek';
     }}
-    fetch('/api/subscribe', {{
+    fetchWithTimeout('/api/subscribe', {{
         method: 'POST',
         headers: {{'Content-Type': 'application/json'}},
         body: JSON.stringify(body)
@@ -974,24 +1014,29 @@ function confirmSubscribe() {{
         }}
     }})
     .catch(e => {{
-        msg.innerHTML = '<span style="color:var(--accent-red)">❌ 订阅失败: ' + e + '</span>';
+        var m = isTimeoutError(e) ? '订阅请求超时，请稍后重试' : ('❌ 订阅失败: ' + e);
+        msg.innerHTML = '<span style="color:var(--accent-red)">' + m + '</span>';
     }});
 }}
 
 function refreshData() {{
     showSpinner();
-    fetch('/api/refresh')
+    fetchWithTimeout('/api/refresh')
         .then(r => r.json())
-        .then(() => fetch('/api/daily').then(r => r.json()))
         .then(data => {{
-            document.getElementById('content').innerHTML = data.html;
-            document.getElementById('reportDate').textContent = '📅 ' + data.date;
-            hideSpinner();
-            showToast();
+            if (data.html) {{
+                document.getElementById('content').innerHTML = data.html;
+                document.getElementById('reportDate').textContent = '📅 ' + data.date;
+                hideSpinner();
+                showToast();
+            }} else {{
+                hideSpinner();
+                alert(data.msg || '刷新失败，请等待定时任务运行');
+            }}
         }})
         .catch(e => {{
             hideSpinner();
-            alert('刷新失败: ' + e);
+            alert(isTimeoutError(e) ? '刷新超时，请稍后重试' : ('刷新失败: ' + e));
         }});
 }}
 
@@ -1014,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', function() {{
     var dateMatch = document.title.match(/\\d{{4}}年\\d{{2}}月\\d{{2}}日/);
     if (dateMatch) document.getElementById('reportDate').textContent = '📅 ' + dateMatch[0];
     showSpinner();
-    fetch('/api/daily')
+    fetchWithTimeout('/api/daily')
         .then(function(r) {{ return r.json(); }})
         .then(function(data) {{
             document.getElementById('content').innerHTML = data.html;
@@ -1022,7 +1067,8 @@ document.addEventListener('DOMContentLoaded', function() {{
             hideSpinner();
         }})
         .catch(function(e) {{
-            document.getElementById('content').innerHTML = '<p style="color:var(--accent-orange);text-align:center;padding:40px">数据加载中，请稍候或点击刷新按钮重试...</p>';
+            var msg = isTimeoutError(e) ? '请求超时，请稍后重试' : '数据加载中，请稍候或点击刷新按钮重试...';
+            document.getElementById('content').innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px">' + msg + '</p>';
             hideSpinner();
         }});
 }});

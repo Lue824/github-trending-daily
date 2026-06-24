@@ -348,3 +348,64 @@ def get_monthly_stats() -> dict:
         "persistent_hot": [dict(r) for r in persistent],
         "fastest_growing": [dict(r) for r in growth],
     }
+
+
+def get_today_repos(date_str: str = None) -> list[dict]:
+    """从数据库读取当天的仓库列表（供 Web 自定义查询用，避免触发完整 pipeline）
+
+    Args:
+        date_str: YYYY-MM-DD 格式日期，默认今天 UTC。若无数据则取最新一天。
+
+    Returns:
+        仓库 dict 列表（含 topics/tags/_extra 等字段，与 pipeline 输出格式对齐）
+    """
+    target = date_str or datetime.utcnow().strftime("%Y-%m-%d")
+
+    def _row_to_repo(row: dict) -> dict:
+        return {
+            "full_name": row["full_name"],
+            "owner": row["owner"],
+            "name": row["name"],
+            "description": row["description"] or "",
+            "language": row["language"] or "Unknown",
+            "stars": row["stars"] or 0,
+            "forks": row["forks"] or 0,
+            "stars_in_period": row["stars_in_period"] or 0,
+            "topics": json.loads(row["topics"]) if row["topics"] else [],
+            "tags": json.loads(row["tags"]) if row["tags"] else [],
+            "is_focus": bool(row["is_focus"]),
+            "hot_score": row["hot_score"] or 0,
+            "sources": json.loads(row["sources"]) if row["sources"] else [],
+            "url": row["url"] or "",
+            "fetch_date": row["fetch_date"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "burst_score": row["burst_score"] or 0,
+            "quality_score": row["quality_score"] or 0,
+            "potential_score": row["potential_score"] or 0,
+            "ai_radar_score": row["ai_radar_score"] or 0,
+            "is_trap": bool(row["is_trap"]),
+            "trap_signals": row["trap_signals"] or 0,
+            "_extra": json.loads(row["extra_data"]) if row["extra_data"] else {},
+        }
+
+    with db_transaction() as conn:
+        rows = conn.execute(
+            "SELECT * FROM daily_repos WHERE fetch_date = ? ORDER BY hot_score DESC",
+            (target,)
+        ).fetchall()
+        if rows:
+            return [_row_to_repo(dict(r)) for r in rows]
+
+        # 降级：取最新一天的数据
+        latest = conn.execute(
+            "SELECT fetch_date FROM daily_repos ORDER BY fetch_date DESC LIMIT 1"
+        ).fetchone()
+        if latest:
+            rows = conn.execute(
+                "SELECT * FROM daily_repos WHERE fetch_date = ? ORDER BY hot_score DESC",
+                (latest["fetch_date"],)
+            ).fetchall()
+            return [_row_to_repo(dict(r)) for r in rows]
+
+    return []
