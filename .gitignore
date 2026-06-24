@@ -5,3 +5,9 @@ __pycache__/
 data/raw/
 data/readmes/
 .DS_Store
+
+# 注意：以下文件需要提交到仓库（供 HF Spaces / PythonAnywhere 读取）
+# data/reports/*.html  — 预生成的日报文件
+# data/trending.db     — SQLite 数据库（当天 repos）
+# data/subscription.json — 订阅记录
+# 这些文件由 GitHub Actions 每天自动生成并提交

@@ -24,6 +24,7 @@ from src.processor.custom_parser import parse_query, generate_sections
 from src.reporter.custom_report import generate_custom_report
 from src.storage.db import get_conn, get_today_repos
 from src.reporter.daily_report import generate_6section_report
+from config import REPORTS_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("web")
@@ -32,10 +33,11 @@ app = Flask(__name__, static_folder=None)
 
 # 绝对路径模板
 _INDEX_HTML = os.path.join(os.path.dirname(__file__), "templates", "index.html")
-_REPORT_DIR = os.path.join(_BASE_DIR, "data", "reports")
+# 使用 config.REPORTS_DIR（支持环境变量配置，HF Spaces 用 /data）
+_REPORT_DIR = REPORTS_DIR
 
 if not os.path.exists(_REPORT_DIR):
-    os.makedirs(_REPORT_DIR)
+    os.makedirs(_REPORT_DIR, exist_ok=True)
 
 
 # ════════════════════════════════════════════════════════════
@@ -228,8 +230,9 @@ def api_subscribe():
         subscription["api_key"] = api_key  # 存仓库文件（用户选择）
         subscription["provider"] = provider
 
-    # 持久化到 data/subscription.json
-    sub_path = os.path.join(_BASE_DIR, "data", "subscription.json")
+    # 持久化到 data/subscription.json（使用 config.DATA_DIR，支持环境变量）
+    from config import DATA_DIR
+    sub_path = os.path.join(DATA_DIR, "subscription.json")
     try:
         with open(sub_path, "w", encoding="utf-8") as f:
             json.dump(subscription, f, ensure_ascii=False, indent=2)

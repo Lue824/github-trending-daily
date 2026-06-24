@@ -35,14 +35,38 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python src/main.py
 
+      - name: Verify generated files
+        run: |
+          echo "=== Generated files ==="
+          ls -la data/reports/ 2>/dev/null || echo "No reports dir"
+          ls -la data/trending.db 2>/dev/null || echo "No db file"
+          echo "=== Latest report ==="
+          ls -t data/reports/daily-6s-*.html 2>/dev/null | head -1 || echo "No 6s report"
+
       - name: Commit daily reports
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 强制添加（.gitignore 可能排除了一些文件）
           git add data/reports/ data/trending.db data/subscription.json -f 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "📊 Daily report: $(date +%Y-%m-%d)"
+            git commit -m "📊 Daily report: $(date -u +%Y-%m-%d)"
             git push
+          fi
+
+      - name: Trigger HF Spaces rebuild (optional)
+        if: success()
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # 如果配置了 HF_TOKEN，触发 HF Spaces 重新构建
+          if [ -n "$HF_TOKEN" ]; then
+            echo "Triggering HF Spaces rebuild..."
+            # HF Spaces 会自动检测 git 仓库变化并重建（如果配置了 webhook）
+            # 这里只是占位，实际重建由 HF Spaces 自动完成
+            echo "HF Spaces will auto-rebuild on next access"
+          else
+            echo "HF_TOKEN not set, skipping HF Spaces trigger"
           fi

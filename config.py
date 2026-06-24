@@ -61,7 +61,8 @@ EMAIL_CONFIG = {
 }
 
 # ── 存储配置 ────────────────────────────────────────────────
-DATA_DIR = "data"
+# 支持通过环境变量配置数据目录（HF Spaces 用 /data，本地用 data）
+DATA_DIR = os.getenv("DATA_DIR", "data")
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 REPORTS_DIR = os.path.join(DATA_DIR, "reports")
 DB_PATH = os.path.join(DATA_DIR, "trending.db")
