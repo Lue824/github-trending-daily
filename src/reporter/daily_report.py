@@ -16,6 +16,7 @@ from datetime import datetime
 
 from config import REPORTS_DIR
 from src.reporter._shared import rank_badge, tags_cn, section_anchor_id
+from src.utils.html_safe import esc
 
 # ── Tailwind 暗色主题配色（GitHub Dark） ──────────────────────
 TW = {
@@ -55,6 +56,13 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
     border_class = f"border-[{TW['orange']}]" if is_trap else f"border-[{TW['border']}]"
     hover_class = f"hover:border-[{TW['red']}]" if is_trap else f"hover:border-[{TW['accent']}]"
 
+    # 项目类型背景
+    bg_class = ""
+    if section == "正在爆发":
+        bg_class = f"bg-[{TW['orange']}]/[0.03]"
+    elif section == "质量标杆":
+        bg_class = f"bg-[{TW['green']}]/[0.03]"
+
     # 陷阱徽章
     trap_html = ""
     if is_trap:
@@ -73,7 +81,7 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
     # 排名数字
     anchor = section_anchor_id(section, idx)
     parts = [
-        f'<div id="{anchor}" class="bg-[{TW["card"]}] border {border_class} rounded-xl p-4 mb-3 transition-all duration-200 {hover_class}">',
+        f'<div id="{anchor}" class="bg-[{TW["card"]}] {bg_class} border {border_class} rounded-xl p-4 mb-3 transition-all duration-200 {hover_class}">',
 
         # ── 标题行 ──
         f'<div class="flex items-center gap-2 flex-wrap mb-2">'
@@ -105,7 +113,7 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
     if inc:
         stat_parts.append(f'<span>📈 +{inc:,}</span>')
     stat_parts.append(f'<span>🍴 {forks:,}</span>')
-    stat_parts.append(f'<span>🗣 {lang}</span>')
+    stat_parts.append(f'<span>\U0001F4BB {esc(lang)}</span>')
 
     # 健康度
     if extra:
@@ -114,13 +122,19 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
             health.append(f'👥 {extra["contributors"]}')
         if extra.get("open_issues"):
             health.append(f'🐛 {extra["open_issues"]} issues')
-        if extra.get("last_push_days", 999) <= 7:
-            health.append('🟢 活跃')
-        elif extra.get("last_push_days", 999) <= 90:
-            health.append('🟡 较活跃')
+        # 统一活跃度标识
+        last_push = extra.get("last_push_days", 999)
+        if last_push <= 7:
+            health.append(f'<span class="inline-block px-2 py-0.5 rounded-full text-[11px] bg-[{TW["green"]}]/12 text-[{TW["green"]}]">● 高活跃</span>')
+        elif last_push <= 30:
+            health.append(f'<span class="inline-block px-2 py-0.5 rounded-full text-[11px] bg-[{TW["orange"]}]/12 text-[{TW["orange"]}]">● 中等活跃</span>')
+        elif last_push <= 180:
+            health.append(f'<span class="inline-block px-2 py-0.5 rounded-full text-[11px] bg-[{TW["red"]}]/12 text-[{TW["red"]}]">● 低活跃</span>')
+        else:
+            health.append(f'<span class="inline-block px-2 py-0.5 rounded-full text-[11px] bg-[{TW["dim"]}]/12 text-[{TW["dim"]}]">● 长期静态</span>')
         if health:
             stat_parts.append(
-                f'<span class="text-[{TW["green"]}] text-xs">{" · ".join(health)}</span>'
+                f'<span class="text-xs">{" · ".join(health)}</span>'
             )
 
     parts.append(
@@ -131,20 +145,32 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
 
     # ── 评分徽章 ──
     scores = []
-    for icon, key, threshold in [("🧨", "burst_score", 0), ("🏆", "quality_score", 0.4), ("🤖", "ai_radar_score", 0)]:
+    for icon, key, threshold, color in [
+        ("🧨", "burst_score", 0, TW["orange"]),
+        ("🏆", "quality_score", 0.4, TW["green"]),
+        ("🤖", "ai_radar_score", 0, TW["purple"]),
+    ]:
         val = repo.get(key, 0)
         if val > threshold:
-            scores.append(f'{icon} {val:.2f}')
+            scores.append(
+                f'<span class="inline-block px-2 py-0.5 rounded text-[11px] font-semibold '
+                f'bg-white/5 text-[{color}]">{icon} {val:.2f}</span>'
+            )
     if scores:
         parts.append(
-            f'<div class="mt-1.5 text-xs text-[{TW["purple"]}] flex gap-3 flex-wrap">'
-            + " · ".join(scores) +
-            '</div>'
+            f'<div class="mt-1.5 flex gap-1.5 flex-wrap">{"".join(scores)}</div>'
         )
 
     # ── 标签 ──
     if tags:
-        parts.append(f'<div class="mt-1 text-xs text-[{TW["dim"]}]">{tags}</div>')
+        # 解析 tags 字符串为列表
+        tag_list = [t.strip('`') for t in tags.split('·')]
+        tag_capsules = "".join(
+            f'<span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium '
+            f'bg-[{TW["accent"]}]/10 text-[{TW["accent"]}] border border-[{TW["accent"]}]/20">{esc(t)}</span>'
+            for t in tag_list if t.strip()
+        )
+        parts.append(f'<div class="mt-1.5 flex gap-1.5 flex-wrap">{tag_capsules}</div>')
 
     parts.append('</div>')
     return "\n".join(parts)
@@ -222,12 +248,27 @@ def generate_6section_report(
   🚀 GitHub 每日热点 <span class="text-[{DI}] font-normal text-lg">— {date_display}</span>
 </h1>
 
-<div class="flex gap-4 flex-wrap my-3 mb-5 p-3 rounded-lg border border-[{B}] bg-[{C}]">
-  <div class="flex flex-col"><span class="text-2xl font-bold text-[{A}]">{total}</span><span class="text-xs text-[{DI}]">收录项目</span></div>
-  <div class="flex flex-col"><span class="text-2xl font-bold text-[{A}]">{focus_cnt}</span><span class="text-xs text-[{DI}]">AI/ML/具身智能</span></div>
-  <div class="flex flex-col"><span class="text-2xl font-bold text-[{A}]">{len(burst)}</span><span class="text-xs text-[{DI}]">正在爆发</span></div>
-  <div class="flex flex-col"><span class="text-2xl font-bold text-[{O}]">{len(traps)}</span><span class="text-xs text-[{DI}]">热度陷阱</span></div>
-  <div class="flex flex-col"><span class="text-2xl font-bold text-[{A}]">{streak_cnt}</span><span class="text-xs text-[{DI}]">连续在榜</span></div>
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 my-3 mb-5">
+  <div class="p-3 rounded-lg border border-[{B}] bg-[{TW["card"]}] hover:border-[{A}] transition-colors cursor-default text-center">
+    <div class="text-2xl font-bold text-[{A}]">{total}</div>
+    <div class="text-xs text-[{DI}] mt-1">📦 收录项目</div>
+  </div>
+  <div class="p-3 rounded-lg border border-[{B}] bg-[{TW["card"]}] hover:border-[{A}] transition-colors cursor-default text-center">
+    <div class="text-2xl font-bold text-[{A}]">{focus_cnt}</div>
+    <div class="text-xs text-[{DI}] mt-1">🤖 AI项目</div>
+  </div>
+  <div class="p-3 rounded-lg border border-[{B}] bg-[{TW["card"]}] hover:border-[{A}] transition-colors cursor-default text-center">
+    <div class="text-2xl font-bold text-[{A}]">{len(burst)}</div>
+    <div class="text-xs text-[{DI}] mt-1">🧨 爆发项目</div>
+  </div>
+  <div class="p-3 rounded-lg border border-[{B}] bg-[{TW["card"]}] hover:border-[{A}] transition-colors cursor-default text-center">
+    <div class="text-2xl font-bold text-[{O}]">{len(traps)}</div>
+    <div class="text-xs text-[{DI}] mt-1">⚠️ 陷阱项目</div>
+  </div>
+  <div class="p-3 rounded-lg border border-[{B}] bg-[{TW["card"]}] hover:border-[{A}] transition-colors cursor-default text-center">
+    <div class="text-2xl font-bold text-[{A}]">{streak_cnt}</div>
+    <div class="text-xs text-[{DI}] mt-1">🔥 连续在榜</div>
+  </div>
 </div>
 '''
 
@@ -272,8 +313,8 @@ def generate_6section_report(
                         )
         else:
             sections_html.append(
-                f'<div class="bg-[{C}] border border-[{B}] rounded-xl p-4 mb-3">'
-                f'<p class="text-sm text-[{DI}]">{empty_text}</p></div>'
+                f'<div class="border border-dashed border-[{B}] rounded-xl p-4 mb-3 text-center">'
+                f'<p class="text-sm text-[{DI}]">📋 {empty_text}</p></div>'
             )
 
     # ── 数据看板 ──

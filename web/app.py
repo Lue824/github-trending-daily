@@ -416,6 +416,9 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
     --text-dim: #8b949e;
     --accent: #58a6ff;
     --accent-green: #3fb950;
+    --accent-orange: #d2991d;
+    --accent-purple: #a371f7;
+    --accent-red: #f85149;
 }}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
@@ -557,6 +560,12 @@ body {{
     padding: 12px 20px;
     text-align: center;
     min-width: 100px;
+    transition: all 0.2s ease;
+    cursor: default;
+}}
+.summary-item:hover {{
+    border-color: var(--accent);
+    background: rgba(88, 166, 255, 0.04);
 }}
 .summary-item .num {{
     display: block;
@@ -593,13 +602,88 @@ body {{
     padding-bottom: 12px;
     border-bottom: 1px dashed var(--border);
 }}
-.custom-card {{
-    background: var(--bg);
-    border: 1px solid var(--border);
+/* === 统一状态标识 === */
+.status-indicator {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.78em;
+    padding: 2px 8px;
     border-radius: 10px;
+    white-space: nowrap;
+}}
+.status-indicator .dot {{
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}}
+.status-active {{ background: rgba(63, 185, 80, 0.12); color: var(--accent-green); }}
+.status-active .dot {{ background: var(--accent-green); }}
+.status-moderate {{ background: rgba(210, 153, 29, 0.12); color: var(--accent-orange); }}
+.status-moderate .dot {{ background: var(--accent-orange); }}
+.status-inactive {{ background: rgba(248, 81, 73, 0.12); color: var(--accent-red); }}
+.status-inactive .dot {{ background: var(--accent-red); }}
+.status-archived {{ background: rgba(139, 148, 158, 0.12); color: var(--text-dim); }}
+.status-archived .dot {{ background: var(--text-dim); }}
+
+/* === 统一标签胶囊 === */
+.tag-capsule {{
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.72em;
+    font-weight: 500;
+    line-height: 1.5;
+    white-space: nowrap;
+}}
+.tag-new {{ background: rgba(255, 159, 28, 0.15); color: #ff9f1c; border: 1px solid rgba(255, 159, 28, 0.3); }}
+.tag-focus {{ background: rgba(88, 166, 255, 0.12); color: var(--accent); border: 1px solid rgba(88, 166, 255, 0.25); }}
+.tag-burst {{ background: rgba(210, 153, 29, 0.12); color: var(--accent-orange); border: 1px solid rgba(210, 153, 29, 0.25); }}
+.tag-quality {{ background: rgba(63, 185, 80, 0.12); color: var(--accent-green); border: 1px solid rgba(63, 185, 80, 0.25); }}
+.tag-trap {{ background: rgba(248, 81, 73, 0.12); color: var(--accent-red); border: 1px solid rgba(248, 81, 73, 0.25); }}
+.tag-longterm {{ background: rgba(63, 185, 80, 0.12); color: var(--accent-green); border: 1px solid rgba(63, 185, 80, 0.25); }}
+
+/* === 统一评分徽章 === */
+.score-badge {{
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75em;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.04);
+}}
+.score-burst {{ color: var(--accent-orange); }}
+.score-quality {{ color: var(--accent-green); }}
+.score-ai {{ color: var(--accent-purple); }}
+
+/* === 统一指标行 === */
+.metric-row {{
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 0.82em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}}
+.metric-item {{
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}}
+
+/* === 项目类型背景色 === */
+.card-burst {{ background: rgba(210, 153, 29, 0.03); }}
+.card-longterm {{ background: rgba(63, 185, 80, 0.03); }}
+
+.custom-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
     padding: 16px;
     margin-bottom: 12px;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
 }}
 .custom-card:hover {{
     border-color: var(--accent);
@@ -636,10 +720,11 @@ body {{
 .custom-card .repo-stats {{
     display: flex;
     gap: 14px;
+    flex-wrap: wrap;
+    align-items: center;
     color: var(--text-dim);
     font-size: 0.82em;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
+    margin-bottom: 8px;
 }}
 .score-badges {{
     display: flex;
@@ -704,36 +789,42 @@ body {{
 .repo-stats {{
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 14px;
     align-items: center;
     margin-top: 8px;
-    font-size: 0.85em;
+    font-size: 0.82em;
     color: var(--text-dim);
 }}
 .dimensions {{
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 12px;
-    margin-top: 8px;
+    padding: 0;
+    margin-top: 10px;
+    overflow: hidden;
 }}
 .dim-title {{
     color: var(--accent);
     font-size: 0.85em;
     font-weight: 600;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px dashed var(--border);
+    padding: 8px 12px;
+    background: rgba(88, 166, 255, 0.05);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }}
 .dim-item {{
     display: grid;
     grid-template-columns: 24px 80px 1fr;
     gap: 8px;
     align-items: start;
-    padding: 6px 0;
+    padding: 8px 12px;
     font-size: 0.82em;
     line-height: 1.5;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.5);
 }}
+.dim-item:last-child {{ border-bottom: none; }}
 .dim-icon {{ font-size: 1em; }}
 .dim-label {{
     color: var(--text-dim);
@@ -828,12 +919,47 @@ footer {{
     .summary-item {{ min-width: 80px; padding: 10px 14px; }}
     .summary-item .num {{ font-size: 1.3em; }}
 }}
-.source-banner {{
+.health-progress {{
+    margin-top: 6px;
     padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.78em;
-    margin-bottom: 12px;
-    line-height: 1.5;
+    border-top: 1px dashed var(--border);
+}}
+.health-progress-bar {{
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg);
+    overflow: hidden;
+    margin-top: 4px;
+}}
+.health-progress-fill {{
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}}
+.health-progress-fill.active {{ background: var(--accent-green); }}
+.health-progress-fill.moderate {{ background: var(--accent-orange); }}
+.health-progress-fill.inactive {{ background: var(--accent-red); }}
+.health-progress-label {{
+    font-size: 0.75em;
+    color: var(--text-dim);
+    margin-top: 4px;
+}}
+.empty-state {{
+    text-align: center;
+    padding: 20px;
+    color: var(--text-dim);
+    font-size: 0.85em;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    margin: 8px 0;
+}}
+.source-banner {{
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.72em;
+    font-weight: 500;
+    margin-bottom: 8px;
 }}
 .source-high-value {{
     background: rgba(63, 185, 80, 0.1);

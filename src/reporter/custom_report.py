@@ -186,20 +186,12 @@ def _card(repo: dict, idx: int) -> str:
     ai_score = repo.get("ai_radar_score", 0)
     source_note = repo.get("_source_note", "")
 
-    # 来源标注横幅
-    source_banner = ""
+    # 来源标注改为行内胶囊
+    source_tag = ""
     if source_note == "high_value":
-        source_banner = (
-            '<div class="source-banner source-high-value">'
-            '💎 长期价值项目 · 这不是近期热门，而是具有长期价值的高价值项目'
-            '</div>'
-        )
+        source_tag = '<span class="tag-capsule tag-longterm">💎 长期价值</span>'
     elif source_note == "basic_top":
-        source_banner = (
-            '<div class="source-banner source-basic-top">'
-            '📌 基础模块高排名 · 此项目来源于基础模块领域的高排名项目'
-            '</div>'
-        )
+        source_tag = '<span class="tag-capsule tag-focus">📌 基础高排名</span>'
 
     # 调用 LLM 生成中文介绍（与基础模块一致）
     cn_intro = _gen_cn_intro(repo)
@@ -207,13 +199,13 @@ def _card(repo: dict, idx: int) -> str:
     # 多维度解读
     dims = _gen_dimensions(repo, cn_intro)
     dims_html = "".join(
-        '<div class="dim-item"><span class="dim-icon">' + d["icon"] + '</span>'
-        '<span class="dim-label">' + d["label"] + '</span>'
-        '<span class="dim-text">' + d["text"] + '</span></div>'
+        f'<div class="dim-item"><span class="dim-icon">{d["icon"]}</span>'
+        f'<span class="dim-label">{d["label"]}</span>'
+        f'<span class="dim-text">{d["text"]}</span></div>'
         for d in dims
     )
 
-    # 评分徽章（与基础模块一致）
+    # 统一评分徽章（与基础模块一致）
     scores = []
     if burst and burst > 0:
         scores.append('🧨 爆发 ' + format(burst, '.2f'))
@@ -221,38 +213,27 @@ def _card(repo: dict, idx: int) -> str:
         scores.append('🏆 质量 ' + format(quality, '.2f'))
     if ai_score and ai_score > 0:
         scores.append('🤖 AI ' + format(ai_score, '.2f'))
-    scores_html = (
-        '<div class="repo-scores">' + " · ".join(scores) + '</div>'
-        if scores else ""
-    )
+    scores_html = '<div class="repo-scores">' + "".join(
+        f'<span class="score-badge {"score-burst" if "爆发" in s else "score-quality" if "质量" in s else "score-ai"}">{s}</span>'
+        for s in scores
+    ) + '</div>' if scores else ""
 
-    # 健康度指标（与基础模块一致）
-    health_items = []
-    if extra.get("contributors"):
-        health_items.append('👥 ' + str(extra["contributors"]))
-    if extra.get("open_issues"):
-        health_items.append('🐛 ' + str(extra["open_issues"]) + ' issues')
-    if extra.get("open_prs"):
-        health_items.append('🔀 ' + str(extra["open_prs"]) + ' PRs')
-    if extra.get("releases"):
-        health_items.append('🏷 ' + str(extra["releases"]) + ' releases')
+    # 统一活跃度标识
     last_push = extra.get("last_push_days", 999)
     if last_push <= 7:
-        health_items.append('🟢 活跃')
-    elif last_push <= 90:
-        health_items.append('🟡 较活跃')
-    elif last_push > 180:
-        health_items.append('🔴 低活跃')
-    health_html = (
-        '<span class="health-meta">' + " · ".join(health_items) + '</span>'
-        if health_items else ""
-    )
+        status_html = '<span class="status-indicator status-active"><span class="dot"></span>高活跃</span>'
+    elif last_push <= 30:
+        status_html = '<span class="status-indicator status-moderate"><span class="dot"></span>中等活跃</span>'
+    elif last_push <= 180:
+        status_html = '<span class="status-indicator status-inactive"><span class="dot"></span>低活跃</span>'
+    else:
+        status_html = '<span class="status-indicator status-archived"><span class="dot"></span>长期静态</span>'
 
-    # 标签
+    # 统一标签为胶囊样式
     tags = repo.get("tags", []) or []
     tags_html = (
-        '<div class="repo-tags">' + " · ".join(
-            '<span class="eco-tag">' + t + '</span>' for t in tags[:3]
+        '<div class="repo-tags">' + "".join(
+            f'<span class="tag-capsule tag-focus">{esc(t)}</span>' for t in tags[:4]
         ) + '</div>'
         if tags else ""
     )
@@ -260,37 +241,61 @@ def _card(repo: dict, idx: int) -> str:
     # 描述：优先用 LLM 中文介绍（转义后保留换行）
     desc_html = safe_text_br(cn_intro) if cn_intro else esc(repo.get("description") or "")
 
-    star_icon = "⭐"
-    inc_icon = "📈"
-    fork_icon = "🍴"
-    lang_icon = "🗣"
-    dim_icon = "🔍"
-
     # 安全的 URL 和项目名
     safe_url = safe_href(repo.get("url"))
     safe_name = esc(repo.get("full_name") or "")
 
-    return """<div class="repo-card custom-card">
-""" + source_banner + """
+    # 统一指标行布局，指标行末尾放状态标识
+    stats_html = f'''<div class="metric-row">
+<span class="metric-item">⭐ {format(stars, ',')}</span>
+{"<span class='metric-item'>📈 +" + format(inc, ',') + "</span>" if inc else ""}
+<span class="metric-item">🍴 {format(forks, ',')}</span>
+<span class="metric-item">💻 {esc(lang)}</span>
+<span class="status-indicator-wrap" style="margin-left:auto">{status_html}</span>
+</div>'''
+
+    # 健康度进度条
+    updated_days = extra.get("updated_days", 0)
+    if updated_days >= 0:
+        if updated_days <= 7:
+            progress_class = "active"
+            progress_pct = 90
+            progress_label = f"持续维护（{updated_days}天前更新）"
+        elif updated_days <= 30:
+            progress_class = "active"
+            progress_pct = 70
+            progress_label = f"维护中（{updated_days}天前更新）"
+        elif updated_days <= 180:
+            progress_class = "moderate"
+            progress_pct = 40
+            progress_label = f"低频更新（{updated_days}天前更新）"
+        else:
+            progress_class = "inactive"
+            progress_pct = 15
+            progress_label = f"长期未更新（{updated_days}天前）"
+        health_progress_html = f'''<div class="health-progress">
+<div class="health-progress-label">{progress_label}</div>
+<div class="health-progress-bar"><div class="health-progress-fill {progress_class}" style="width:{progress_pct}%"></div></div>
+</div>'''
+    else:
+        health_progress_html = ""
+
+    return f'''<div class="repo-card custom-card">
 <div class="repo-header">
-<span class="repo-rank">#""" + str(idx) + """</span>
-<a href=\"""" + safe_url + """\" target="_blank" class="repo-name">""" + safe_name + """</a>
+<span class="repo-rank">#{idx}</span>
+<a href="{safe_url}" target="_blank" class="repo-name">{safe_name}</a>
+{source_tag}
 </div>
-<div class="repo-desc">""" + desc_html + """</div>
-<div class="repo-stats">
-<span>""" + star_icon + """ """ + format(stars, ',') + """</span>
-""" + ("<span>" + inc_icon + " +" + format(inc, ',') + """</span>""" if inc else "") + """
-<span>""" + fork_icon + """ """ + format(forks, ',') + """</span>
-<span>""" + lang_icon + """ """ + esc(lang) + """</span>
-""" + health_html + """
-</div>
-""" + scores_html + """
-""" + tags_html + """
+<div class="repo-desc">{desc_html}</div>
+{stats_html}
+{scores_html}
+{tags_html}
+{health_progress_html}
 <div class="dimensions">
-<div class="dim-title">""" + dim_icon + """ 多维度解读</div>
-""" + dims_html + """
+<div class="dim-title">🔍 多维度解读</div>
+{dims_html}
 </div>
-</div>"""
+</div>'''
 
 
 def generate_custom_report(
@@ -438,7 +443,7 @@ def generate_custom_report(
                 sections_html.append(_card(r, i))
         else:
             sections_html.append(
-                '<div class="repo-card"><p style="color:var(--text-dim)">暂无匹配项目</p></div>'
+                '<div class="empty-state">📋 暂无匹配项目</div>'
             )
         sections_html.append('</section>')
 
