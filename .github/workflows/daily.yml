@@ -56,17 +56,39 @@ jobs:
             git push
           fi
 
-      - name: Trigger HF Spaces rebuild (optional)
+      - name: Sync to HF Spaces
         if: success()
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # 如果配置了 HF_TOKEN，触发 HF Spaces 重新构建
-          if [ -n "$HF_TOKEN" ]; then
-            echo "Triggering HF Spaces rebuild..."
-            # HF Spaces 会自动检测 git 仓库变化并重建（如果配置了 webhook）
-            # 这里只是占位，实际重建由 HF Spaces 自动完成
-            echo "HF Spaces will auto-rebuild on next access"
+          if [ -z "$HF_TOKEN" ]; then
+            echo "⚠️ HF_TOKEN not set, skipping HF Spaces sync"
+            exit 0
+          fi
+          echo "🚀 Syncing to HF Spaces..."
+          # 克隆 HF Spaces 仓库到临时目录
+          git clone https://lue824:${HF_TOKEN}@huggingface.co/spaces/lue824/github-trending-daily /tmp/hf-space
+          # 同步所有文件（排除二进制 db、缓存、敏感文件）
+          rsync -av \
+            --exclude='.git' \
+            --exclude='data/trending.db' \
+            --exclude='data/raw/' \
+            --exclude='data/readmes/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='.claude/' \
+            --exclude='.github/' \
+            ./ /tmp/hf-space/
+          # 提交并推送
+          cd /tmp/hf-space
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to sync to HF Spaces"
           else
-            echo "HF_TOKEN not set, skipping HF Spaces trigger"
+            git commit -m "📊 Daily update: $(date -u +%Y-%m-%d)"
+            git push
+            echo "✅ HF Spaces updated successfully"
           fi
