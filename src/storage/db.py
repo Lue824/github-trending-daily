@@ -351,10 +351,25 @@ def get_monthly_stats() -> dict:
 
 
 def _load_repos_from_json() -> list[dict]:
-    """从 JSON 文件读取仓库数据（HF Spaces 无 SQLite 时的回退方案）"""
+    """从 JSON 文件读取仓库数据（HF Spaces 无 SQLite 时的回退方案）
+
+    多路径查找：DATA_DIR/repos.json → /app/data/repos.json → 项目根 data/repos.json
+    确保在 HF Spaces（DATA_DIR=/data）和本地环境都能找到数据
+    """
     from config import DATA_DIR
-    json_path = os.path.join(DATA_DIR, "repos.json")
-    if not os.path.exists(json_path):
+    # 候选路径：按优先级尝试
+    candidate_paths = [
+        os.path.join(DATA_DIR, "repos.json"),               # DATA_DIR（HF: /data, 本地: data）
+        os.path.join("/app/data", "repos.json"),             # Docker 镜像内原始位置
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "repos.json"),  # 项目根
+    ]
+    json_path = None
+    for p in candidate_paths:
+        if os.path.exists(p):
+            json_path = p
+            break
+    if not json_path:
+        logger.warning(f"repos.json not found in any of: {candidate_paths}")
         return []
     try:
         with open(json_path, "r", encoding="utf-8") as f:
@@ -366,10 +381,10 @@ def _load_repos_from_json() -> list[dict]:
                 r["_extra"] = r.pop("extra_data")
             r["is_focus"] = bool(r.get("is_focus", 0))
             r["is_trap"] = bool(r.get("is_trap", 0))
-        logger.info(f"Loaded {len(repos)} repos from JSON fallback")
+        logger.info(f"Loaded {len(repos)} repos from JSON fallback ({json_path})")
         return repos
     except Exception as e:
-        logger.error(f"Failed to load repos.json: {e}")
+        logger.error(f"Failed to load repos.json ({json_path}): {e}")
         return []
 
 

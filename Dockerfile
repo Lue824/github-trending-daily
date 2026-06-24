@@ -28,6 +28,8 @@ RUN mkdir -p /data/reports /data/raw /data/readmes
 # 这里把仓库内的 data/reports 和 trending.db 复制到 /data，保证可读可写
 RUN if [ -d /app/data/reports ]; then cp -r /app/data/reports/* /data/reports/ 2>/dev/null || true; fi
 RUN if [ -f /app/data/trending.db ]; then cp /app/data/trending.db /data/trending.db 2>/dev/null || true; fi
+RUN if [ -f /app/data/repos.json ]; then cp /app/data/repos.json /data/repos.json 2>/dev/null || true; fi
+RUN if [ -f /app/data/subscription.json ]; then cp /app/data/subscription.json /data/subscription.json 2>/dev/null || true; fi
 
 # HF Spaces 默认端口 7860
 ENV PORT=7860
