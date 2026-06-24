@@ -15,7 +15,7 @@ from collections import Counter
 from datetime import datetime
 
 from config import REPORTS_DIR
-from src.reporter._shared import rank_badge, tags_cn, section_anchor_id
+from src.reporter._shared import rank_badge, section_anchor_id
 from src.utils.html_safe import esc
 
 # ── Tailwind 暗色主题配色（GitHub Dark） ──────────────────────
@@ -46,7 +46,6 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
     inc = repo.get("stars_in_period", 0) or 0
     forks = repo.get("forks", 0)
     lang = repo.get("language", "Unknown")
-    tags = tags_cn(repo)
     extra = repo.get("_extra", {}) or {}
     badge_text = rank_badge(repo, section, idx, yesterday_ranks)
     is_trap = repo.get("is_trap", False)
@@ -162,13 +161,12 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
         )
 
     # ── 标签 ──
-    if tags:
-        # 解析 tags 字符串为列表
-        tag_list = [t.strip('`') for t in tags.split('·')]
+    tags_list = repo.get("tags", [])
+    if tags_list:
         tag_capsules = "".join(
             f'<span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium '
             f'bg-[{TW["accent"]}]/10 text-[{TW["accent"]}] border border-[{TW["accent"]}]/20">{esc(t)}</span>'
-            for t in tag_list if t.strip()
+            for t in tags_list
         )
         parts.append(f'<div class="mt-1.5 flex gap-1.5 flex-wrap">{tag_capsules}</div>')
 
