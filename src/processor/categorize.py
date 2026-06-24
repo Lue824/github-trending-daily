@@ -1,4 +1,6 @@
 """按领域分类并标记重点项目"""
+import math
+
 from config import FOCUS_KEYWORDS
 
 
@@ -33,7 +35,7 @@ def compute_hot_score(repo: dict) -> float:
     """
     综合热度评分，用于跨源排序
 
-    公式：stars * 0.3 + stars_in_period * 0.5 + forks * 0.2 + focus_bonus
+    公式：log(stars)*0.3 + stars_in_period*0.5 + log(forks)*0.2 + focus_bonus + source_bonus
     """
     stars = repo.get("stars", 0)
     stars_period = repo.get("stars_in_period", 0) or 0
@@ -45,7 +47,6 @@ def compute_hot_score(repo: dict) -> float:
         source_bonus = 1.5  # 多源验证加分
 
     # 对数缩放避免头部项目分差过大
-    import math
     score = math.log(stars + 1) * 0.3 + stars_period * 0.5 + math.log(forks + 1) * 0.2
     score += is_focus * 2.0 + source_bonus * 1.0
     return round(score, 2)

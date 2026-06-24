@@ -5,10 +5,10 @@ AI 深度日报 HTML 生成器
 """
 import os
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import REPORTS_DIR
-from src.processor.describe_cn import generate_cn_description
+from src.utils.html_safe import esc, safe_href, safe_text_br
 
 
 def _repo_card(repo: dict, idx: int, section: str,
@@ -44,8 +44,8 @@ def _repo_card(repo: dict, idx: int, section: str,
             score_badges.append(f'<span class="badge badge-info">{icon} {label} {val:.0%}</span>')
     scores_html = " ".join(score_badges) if score_badges else ""
 
-    eco_html = " · ".join(f'<span class="eco-tag">{t}</span>' for t in eco) if eco else ""
-    tags_html = " · ".join(f'<span class="tag-item">{t}</span>' for t in tags) if tags else ""
+    eco_html = " · ".join(f'<span class="eco-tag">{esc(t)}</span>' for t in eco) if eco else ""
+    tags_html = " · ".join(f'<span class="tag-item">{esc(t)}</span>' for t in tags) if tags else ""
 
     # 描述：优先 LLM 分析的「一句话定位」，其次原始描述
     llm = llm_analyses.get(repo["full_name"], "")
@@ -103,9 +103,9 @@ def _repo_card(repo: dict, idx: int, section: str,
     return f"""<div class="repo-card{' trap-card' if section == 'warning' else ''}">
 <div class="repo-header">
 <span class="repo-rank">#{idx}</span>
-<a href="{repo['url']}" target="_blank" class="repo-name">{repo['full_name']}</a>{score_html}
+<a href="{safe_href(repo.get('url', ''))}" target="_blank" class="repo-name">{esc(repo.get('full_name', ''))}</a>{score_html}
 </div>
-<div class="repo-desc">{desc_html}</div>
+<div class="repo-desc">{esc(desc_html)}</div>
 <div class="repo-stats">
 <span>⭐ {stars:,}</span>
 {"<span>📈 +" + f"{inc:,}</span>" if inc else ""}
@@ -128,7 +128,7 @@ def generate_ai_report(focus_repos: list[dict], sections: dict, date_str: str,
     readme_cache = readme_cache or {}
     llm_analyses = llm_analyses or {}
 
-    now = datetime.strptime(date_str, "%Y-%m-%d") if date_str else datetime.utcnow()
+    now = datetime.strptime(date_str, "%Y-%m-%d") if date_str else datetime.now(timezone.utc)
     date_display = now.strftime("%Y年%m月%d日")
     sec_repos = sections or get_ai_section_repos(focus_repos)
 
@@ -168,13 +168,13 @@ def generate_ai_report(focus_repos: list[dict], sections: dict, date_str: str,
 
     # 趋势看板
     eco_html = " · ".join(
-        f'<span class="eco-tag">{e} <small>{c}</small></span>' for e, c in top_ecos
+        f'<span class="eco-tag">{esc(e)} <small>{c}</small></span>' for e, c in top_ecos
     )
     tag_html = " · ".join(
-        f'<span class="eco-tag">{t} <small>{c}</small></span>' for t, c in top_tags
+        f'<span class="eco-tag">{esc(t)} <small>{c}</small></span>' for t, c in top_tags
     )
     lang_html = " · ".join(
-        f'<span class="eco-tag">{l} <small>{c}</small></span>' for l, c in top_langs
+        f'<span class="eco-tag">{esc(l)} <small>{c}</small></span>' for l, c in top_langs
     )
 
     return f"""<div class="container">

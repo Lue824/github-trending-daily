@@ -297,7 +297,7 @@ def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
 
     burst = repo.get("burst_score", 0)
     quality = repo.get("quality_score", 0)
-    strea = repo.get("streak_days", 0)
+    streak = repo.get("streak_days", 0)
 
     contributors = extra.get("contributors", 0)
     open_issues = extra.get("open_issues", 0)
@@ -397,8 +397,8 @@ def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
     elif stars_today >= 1000:
         insights.append(f"今日新增 {stars_today:,} Star，热度持续攀升")
 
-    if strea >= 5:
-        insights.append(f"连续 {strea} 天在榜，关注度稳定")
+    if streak >= 5:
+        insights.append(f"连续 {streak} 天在榜，关注度稳定")
 
     if open_issues > 50:
         insights.append(f"开放 Issue 数量较高（{open_issues}），需关注维护压力")

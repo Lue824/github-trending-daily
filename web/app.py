@@ -10,19 +10,17 @@ import os
 import sys
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-from flask import Flask, render_template_string, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 
 # 确保 src 目录在路径中
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _BASE_DIR)
 
-from src.pipeline import run_pipeline
-from src.reporter.daily_report import generate_6section_report, save_6section_report
 from src.processor.custom_parser import parse_query, generate_sections
 from src.reporter.custom_report import generate_custom_report
-from src.storage.db import get_conn, get_today_repos
+from src.storage.db import get_today_repos
 from src.reporter.daily_report import generate_6section_report
 from config import REPORTS_DIR
 
@@ -31,54 +29,11 @@ logger = logging.getLogger("web")
 
 app = Flask(__name__, static_folder=None)
 
-# 绝对路径模板
-_INDEX_HTML = os.path.join(os.path.dirname(__file__), "templates", "index.html")
 # 使用 config.REPORTS_DIR（支持环境变量配置，HF Spaces 用 /data）
 _REPORT_DIR = REPORTS_DIR
 
 if not os.path.exists(_REPORT_DIR):
     os.makedirs(_REPORT_DIR, exist_ok=True)
-
-
-# ════════════════════════════════════════════════════════════
-# 缓存
-# ════════════════════════════════════════════════════════════
-_cached_report: dict = {"content": "", "date": "", "repos": [], "meta": {}}
-
-
-def _generate_report():
-    """运行流水线并生成报告"""
-    global _cached_report
-
-    data = run_pipeline()
-    if not data:
-        return {"content": "<p>暂无数据，请稍后刷新</p>", "date": "", "repos": [], "meta": {}}
-
-    today = data["today"]
-    yesterday = data["yesterday"]
-
-    if _cached_report["date"] == today and _cached_report["content"]:
-        return _cached_report
-
-    report_html = generate_6section_report(
-        data["repos"], today, data["readme_cache"],
-        data["llm_analyses"], data["trend_analysis"],
-        data["yesterday_ranks"], yesterday,
-    )
-    save_6section_report(report_html, today)
-
-    _cached_report = {
-        "content": report_html,
-        "date": today,
-        "repos": data["repos"],
-        "meta": {
-            "total": len(data["repos"]),
-            "focus": sum(1 for r in data["repos"] if r.get("is_focus")),
-            "burst": sum(1 for r in data["repos"] if r.get("burst_score", 0) > 0),
-            "traps": sum(1 for r in data["repos"] if r.get("is_trap")),
-        },
-    }
-    return _cached_report
 
 
 # ════════════════════════════════════════════════════════════
@@ -112,7 +67,7 @@ def api_daily():
 
     # 无预生成文件 — 返回提示（不触发 pipeline，避免超时）
     return jsonify({
-        "date": datetime.utcnow().strftime("%Y-%m-%d"),
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "html": '<div style="text-align:center;padding:60px 20px;color:var(--text-dim)">'
                 '<p style="font-size:1.2em;margin-bottom:12px">⏳ 今日日报尚未生成</p>'
                 '<p>日报由定时任务（每天 UTC 00:00）自动生成，请稍后访问</p>'
@@ -128,8 +83,6 @@ def api_refresh():
     注意：PythonAnywhere 免费版无法在 Web 请求中运行完整 pipeline（100秒 CPU 限制）
     数据刷新由 GitHub Actions 定时任务或服务器 cron 完成
     """
-    global _cached_report
-    _cached_report = {"content": "", "date": "", "repos": [], "meta": {}}
     import glob
     report_files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
     if report_files:
@@ -215,7 +168,7 @@ def api_subscribe():
     subscription = {
         "type": sub_type,
         "email": email,
-        "updated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
 
     if sub_type == "custom":
@@ -271,15 +224,17 @@ def send_subscription_email(subscription: dict):
     sub_type = subscription.get("type", "basic")
 
     if sub_type == "basic":
-        # 发送基础 6 板块日报 — 优先读预生成文件
-        html = _cached_report.get("content", "")
-        if not html:
-            import glob
-            files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
-            if files:
+        # 发送基础 6 板块日报 — 读预生成文件
+        import glob
+        html = ""
+        files = sorted(glob.glob(os.path.join(_REPORT_DIR, "daily-6s-*.html")), reverse=True)
+        if files:
+            try:
                 with open(files[0], "r", encoding="utf-8") as f:
                     html = f.read()
-        subject = f"🚀 GitHub 每日热点（基础日报）— {datetime.utcnow().strftime('%Y-%m-%d')}"
+            except Exception as e:
+                logger.warning(f"Failed to read report for email: {e}")
+        subject = f"🚀 GitHub 每日热点（基础日报）— {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
         send_email(subject, html, receiver=email)
     else:
         # 发送自定义日报 — 从数据库读取 repos（不触发 pipeline）
@@ -297,7 +252,7 @@ def send_subscription_email(subscription: dict):
         sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key, provider)
         basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
         html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
-        subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {datetime.utcnow().strftime('%Y-%m-%d')}"
+        subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
         send_email(subject, html, receiver=email)
 
 

@@ -3,7 +3,8 @@ GitHub Search API 数据抓取
 搜索近期高星项目和新星项目
 """
 import logging
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -61,7 +62,7 @@ def search_trending_repos(min_stars: int = 500, per_page: int = 30) -> list[dict
 
     按 stars 降序排列
     """
-    since = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
     q = f"stars:>={min_stars} pushed:>={since}"
     return _search_repos(q, "stars", per_page, source_tag="api/trending")
 
@@ -70,7 +71,7 @@ def search_new_hot_repos(min_stars: int = 100, per_page: int = 30) -> list[dict]
     """
     搜索30天内新建且已获得较多 stars 的项目（新星项目）
     """
-    since = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     q = f"stars:>={min_stars} created:>={since}"
     return _search_repos(q, "stars", per_page, source_tag="api/new-stars")
 
@@ -79,7 +80,7 @@ def search_ai_ml_repos(per_page: int = 20) -> list[dict]:
     """
     搜索 AI/ML/具身智能 相关的高星新项目
     """
-    since = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     topics = [
         "machine-learning", "deep-learning", "artificial-intelligence",
         "llm", "large-language-model", "generative-ai", "agent",
@@ -132,7 +133,7 @@ def search_high_value_repos(keywords: list[str], per_page: int = 15) -> list[dic
 
     # 构建查询：关键词 OR 组合 + stars 门槛 + pushed 最近一年
     kw_query = " OR ".join(keywords[:5])
-    q = f"{kw_query} stars:>1000 pushed:>2025-01-01"
+    q = f"{kw_query} stars:>1000 pushed:>={(datetime.now(timezone.utc) - timedelta(days=365)).strftime('%Y-%m-%d')}"
 
     url = f"{API_BASE}/search/repositories"
     params = {
@@ -200,7 +201,10 @@ def fetch_readme(owner: str, name: str) -> str | None:
         if len(text) > 2500:
             truncated = text[:2500]
             last_dot = truncated.rfind(".")
-            text = (truncated[:last_dot + 1] if last_dot > 500 else truncated) + "."
+            if last_dot > 500:
+                text = truncated[:last_dot + 1]
+            else:
+                text = truncated.rstrip(".") + "."
         return text.strip()
     except requests.RequestException as e:
         logger.warning(f"Failed to fetch README for {owner}/{name}: {e}")
@@ -209,7 +213,6 @@ def fetch_readme(owner: str, name: str) -> str | None:
 
 def _strip_markdown(text: str) -> str:
     """移除 Markdown 标记，保留可读文本"""
-    import re
     # 移除图片
     text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
     # 链接保留文字

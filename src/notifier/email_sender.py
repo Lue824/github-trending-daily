@@ -3,6 +3,7 @@ QQ 邮箱推送
 使用 SMTP SSL 方式发送
 """
 import logging
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -69,8 +70,6 @@ def markdown_to_html(md_content: str) -> str:
 
     用简单规则转换，避免引入额外依赖
     """
-    import re
-
     lines = md_content.split("\n")
     html_lines = []
     in_table = False
@@ -163,9 +162,18 @@ def markdown_to_html(md_content: str) -> str:
 
 def _inline_md(text: str) -> str:
     """处理行内 markdown 语法：加粗、代码、链接、图片"""
-    import re
-    # 链接 [text](url)
-    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2" style="color:#0969da;">\1</a>', text)
+    # 先转义 HTML 实体，防止注入
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # 链接 [text](url) — 校验 URL 协议，阻止 javascript: 等危险协议
+    def _safe_link(m):
+        link_text = m.group(1)
+        url = m.group(2).strip()
+        # 仅允许 http/https/mailto 协议
+        if re.match(r'^https?://|^mailto:', url, re.IGNORECASE):
+            return f'<a href="{url}" style="color:#0969da;">{link_text}</a>'
+        # 不安全协议，仅显示文本
+        return link_text
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _safe_link, text)
     # 行内代码 `code`
     text = re.sub(
         r'`([^`]+)`',

@@ -12,11 +12,10 @@
 每个维度 0~1 归一化
 """
 import math
-from datetime import datetime, timedelta
 
 
 def _sigmoid(x: float, k: float = 0.1) -> float:
-    """Sigmoid 归一化，将正值映射到 0~1"""
+    """Sigmoid 归一化，将输入映射到 (-1, 1)"""
     return 2 / (1 + math.exp(-k * x)) - 1
 
 

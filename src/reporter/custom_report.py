@@ -32,13 +32,6 @@ def _match_repo(repo: dict, keywords: list[str], exclude: list[str],
     return any(kw.lower() in text for kw in keywords)
 
 
-def _format_num(n: int) -> str:
-    """格式化数字：1234 → 1.2k"""
-    if n >= 1000:
-        return f"{n/1000:.1f}k"
-    return str(n)
-
-
 def _get_extra(repo: dict) -> dict:
     """安全获取 extra 数据"""
     return repo.get("_extra", {}) or {}
@@ -75,12 +68,10 @@ def _gen_dimensions(repo: dict, cn_intro: str = "") -> list[dict]:
     lang = repo.get("language", "Unknown")
     stars = repo.get("stars", 0)
     forks = repo.get("forks", 0)
-    issues = extra.get("open_issues", repo.get("issues", 0))
+    issues = extra.get("open_issues", 0)
     prs = extra.get("open_prs", 0)
     contribs = extra.get("contributors", 0)
     releases = extra.get("releases", 0)
-    last_commit = extra.get("last_commit", "")
-    created_days = extra.get("created_days", 0)
     updated_days = extra.get("updated_days", 0)
 
     # 维度1：它是什么（优先用 LLM 中文介绍）
@@ -399,15 +390,11 @@ def generate_custom_report(
 
         if sec.get("sort_by") == "dashboard":
             top_langs = lang_counter.most_common(6)
-            lang_html = " · ".join(
-                f'<span class="eco-tag">{l} <small>{c}</small></span>'
-                for l, c in top_langs
-            )
             # 语言分布条形图
             max_count = top_langs[0][1] if top_langs else 1
             lang_bars = "".join(
                 f'<div class="lang-bar-item">'
-                f'<span class="lang-name">{l}</span>'
+                f'<span class="lang-name">{esc(l)}</span>'
                 f'<div class="lang-bar-bg"><div class="lang-bar-fill" style="width:{c/max_count*100:.0f}%"></div></div>'
                 f'<span class="lang-count">{c}</span>'
                 f'</div>'

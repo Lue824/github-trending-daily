@@ -1,11 +1,12 @@
 """
 SQLite 存储层：持久化每日数据，支持历史对比和趋势分析
 """
+import contextlib
 import json
 import logging
 import sqlite3
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from config import DB_PATH, DATA_RETENTION_DAYS
 
@@ -18,9 +19,6 @@ def get_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
-
-
-import contextlib
 
 
 @contextlib.contextmanager
@@ -187,7 +185,7 @@ def save_daily_summary(date: str, repos: list[dict], report_path: str = ""):
 
 def get_history_for_repo(full_name: str, days: int = 7) -> list[dict]:
     """查询某个仓库在最近 N 天的记录（用于连续在榜判断）"""
-    since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     with db_transaction() as conn:
         rows = conn.execute(
             "SELECT fetch_date, stars, hot_score FROM daily_repos WHERE full_name = ? AND fetch_date >= ? ORDER BY fetch_date",
@@ -204,15 +202,27 @@ def mark_consecutive_streak(repos: list[dict], today: str, yesterday: str) -> li
                 "SELECT full_name FROM daily_repos WHERE fetch_date = ?", (yesterday,)
             ).fetchall()
         )
+        # 批量查询所有 repos 的历史记录（避免 N+1 查询）
+        since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+        full_names = [r["full_name"] for r in repos]
+        history_map: dict[str, list[str]] = {}
+        if full_names:
+            placeholders = ",".join("?" * len(full_names))
+            rows = conn.execute(
+                f"SELECT full_name, fetch_date FROM daily_repos "
+                f"WHERE full_name IN ({placeholders}) AND fetch_date >= ? "
+                f"ORDER BY fetch_date",
+                (*full_names, since)
+            ).fetchall()
+            for row in rows:
+                history_map.setdefault(row["full_name"], []).append(row["fetch_date"])
 
     for repo in repos:
         repo["on_list_yesterday"] = repo["full_name"] in yesterday_repos
 
         # 计算连续在榜天数
-        full_name = repo["full_name"]
-        history = get_history_for_repo(full_name, days=7)
-        if len(history) >= 2:
-            dates = sorted(set(h["fetch_date"] for h in history))
+        dates = sorted(set(history_map.get(repo["full_name"], [])))
+        if len(dates) >= 2:
             streak = 1
             check_date = datetime.strptime(today, "%Y-%m-%d") - timedelta(days=1)
             while check_date.strftime("%Y-%m-%d") in dates:
@@ -285,7 +295,7 @@ def get_yesterday_section_ranks(yesterday: str) -> dict:
 
 def cleanup_old_data():
     """删除超过保留期限的数据"""
-    cutoff = (datetime.utcnow() - timedelta(days=DATA_RETENTION_DAYS)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=DATA_RETENTION_DAYS)).strftime("%Y-%m-%d")
     with db_transaction() as conn:
         deleted_repos = conn.execute("DELETE FROM daily_repos WHERE fetch_date < ?", (cutoff,)).rowcount
         deleted_summaries = conn.execute("DELETE FROM daily_summary WHERE date < ?", (cutoff,)).rowcount
@@ -296,7 +306,7 @@ def cleanup_old_data():
 
 def get_monthly_stats() -> dict:
     """获取过去30天的统计数据，用于月度趋势分析"""
-    since = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     with db_transaction() as conn:
         # 每日聚焦项目数量
         daily_focus = conn.execute("""
@@ -397,7 +407,7 @@ def get_today_repos(date_str: str = None) -> list[dict]:
     Returns:
         仓库 dict 列表（含 topics/tags/_extra 等字段，与 pipeline 输出格式对齐）
     """
-    target = date_str or datetime.utcnow().strftime("%Y-%m-%d")
+    target = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     def _row_to_repo(row: dict) -> dict:
         return {

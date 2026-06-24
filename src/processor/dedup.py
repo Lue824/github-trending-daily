@@ -35,8 +35,9 @@ def deduplicate(repos: list[dict]) -> list[dict]:
                 existing["stars"] = repo.get("stars") or 0
             if (repo.get("forks") or 0) > (existing.get("forks") or 0):
                 existing["forks"] = repo.get("forks") or 0
+            # 合并 stars_in_period（取最大值，影响爆发评分）
+            if (repo.get("stars_in_period") or 0) > (existing.get("stars_in_period") or 0):
+                existing["stars_in_period"] = repo.get("stars_in_period") or 0
             existing["topics"] = list(set((existing.get("topics") or []) + (repo.get("topics") or [])))
 
-    result = list(merged.values())
-    # 删除 sources 辅助字段之外保留
-    return result
+    return list(merged.values())

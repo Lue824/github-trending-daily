@@ -9,7 +9,7 @@ GitHub Trending Daily — 主入口
 import logging
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 # 确保 src 目录在路径中
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -82,7 +82,7 @@ def run_daily():
         logger.warning("Email sending failed (check .env config)")
 
     # ── 月初月报 ───────────────────────────────────────
-    if datetime.utcnow().day == 1:
+    if datetime.now(timezone.utc).day == 1:
         run_monthly()
 
     # ── 清理旧数据 ──────────────────────────────────────
@@ -120,7 +120,7 @@ def run_monthly():
     """生成月度趋势分析报告"""
     logger.info("--- Generating monthly trend report ---")
     stats = get_monthly_stats()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if now.month == 1:
         year, month = now.year - 1, 12
     else:
@@ -139,7 +139,11 @@ def run_monthly():
 if __name__ == "__main__":
     if "--web" in sys.argv:
         from web.app import run_web
-        port = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 5000
+        port = 5000
+        if "--port" in sys.argv:
+            idx = sys.argv.index("--port")
+            if idx + 1 < len(sys.argv):
+                port = int(sys.argv[idx + 1])
         run_web(port=port, debug=False)
     else:
         run_daily()

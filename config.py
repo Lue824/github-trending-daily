@@ -57,7 +57,7 @@ EMAIL_CONFIG = {
     "smtp_port": 465,
     "sender": os.getenv("QQ_EMAIL", ""),          # 你的 QQ 邮箱
     "password": os.getenv("QQ_EMAIL_AUTH_CODE", ""),  # QQ 邮箱授权码
-    "receiver": os.getenv("RECEIVER_EMAIL", "your_qq@qq.com"),
+    "receiver": os.getenv("RECEIVER_EMAIL", ""),
 }
 
 # ── 存储配置 ────────────────────────────────────────────────

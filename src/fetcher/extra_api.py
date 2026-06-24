@@ -4,7 +4,7 @@ GitHub API 额外数据抓取
 """
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -67,10 +67,10 @@ def fetch_repo_extra(owner: str, name: str) -> dict:
         result["open_issues"] = repo_data.get("open_issues_count", 0)
         if repo_data.get("created_at"):
             created = datetime.strptime(repo_data["created_at"], "%Y-%m-%dT%H:%M:%SZ")
-            result["created_days"] = (datetime.utcnow() - created).days
+            result["created_days"] = (datetime.now(timezone.utc) - created).days
         if repo_data.get("pushed_at"):
             pushed = datetime.strptime(repo_data["pushed_at"], "%Y-%m-%dT%H:%M:%SZ")
-            result["last_push_days"] = (datetime.utcnow() - pushed).days
+            result["last_push_days"] = (datetime.now(timezone.utc) - pushed).days
 
     # 没有有效 Token 时不请求额外数据
     if not _has_valid_token():
@@ -90,8 +90,8 @@ def fetch_repo_extra(owner: str, name: str) -> dict:
                     result["open_prs"] = int(m.group(1))
             else:
                 result["open_prs"] = len(resp.json())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to fetch PR count for {owner}/{name}: {e}")
 
     # 3. 贡献者数
     try:
@@ -107,8 +107,8 @@ def fetch_repo_extra(owner: str, name: str) -> dict:
                     result["contributors"] = int(m.group(1))
             else:
                 result["contributors"] = len(resp.json())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to fetch contributors for {owner}/{name}: {e}")
 
     # 4. Release 数
     releases_data = _api_get(f"{API_BASE}/repos/{owner}/{name}/releases?per_page=5")
@@ -118,7 +118,7 @@ def fetch_repo_extra(owner: str, name: str) -> dict:
             last_rel = datetime.strptime(
                 releases_data[0]["published_at"], "%Y-%m-%dT%H:%M:%SZ"
             )
-            result["last_release_days"] = (datetime.utcnow() - last_rel).days
+            result["last_release_days"] = (datetime.now(timezone.utc) - last_rel).days
 
     # 5. 近12周提交活跃度
     commit_stats = _api_get(

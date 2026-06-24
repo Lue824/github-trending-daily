@@ -58,6 +58,7 @@ jobs:
 
       - name: Sync to HF Spaces
         if: success()
+        continue-on-error: true
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -67,7 +68,10 @@ jobs:
           fi
           echo "🚀 Syncing to HF Spaces..."
           # 克隆 HF Spaces 仓库到临时目录
-          git clone https://lue824:${HF_TOKEN}@huggingface.co/spaces/lue824/github-trending-daily /tmp/hf-space
+          git clone https://lue824:${HF_TOKEN}@huggingface.co/spaces/lue824/github-trending-daily /tmp/hf-space || {
+            echo "⚠️ HF Spaces clone failed (account may be locked), skipping"
+            exit 0
+          }
           # 同步所有文件（排除二进制 db、缓存、敏感文件）
           rsync -av \
             --exclude='.git' \
@@ -89,6 +93,6 @@ jobs:
             echo "No changes to sync to HF Spaces"
           else
             git commit -m "📊 Daily update: $(date -u +%Y-%m-%d)"
-            git push
+            git push || echo "⚠️ HF Spaces push failed, skipping"
             echo "✅ HF Spaces updated successfully"
           fi

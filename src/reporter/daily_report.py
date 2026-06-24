@@ -9,14 +9,13 @@
 ⑤ AI/ML雷达 — AI领域综合评分
 ⑥ 数据看板 — 统计摘要
 """
-import json
 import os
 from collections import Counter
 from datetime import datetime
 
 from config import REPORTS_DIR
 from src.reporter._shared import rank_badge, section_anchor_id
-from src.utils.html_safe import esc
+from src.utils.html_safe import esc, safe_href, safe_text_br
 
 # ── Tailwind 暗色主题配色（GitHub Dark） ──────────────────────
 TW = {
@@ -86,9 +85,9 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
         f'<div class="flex items-center gap-2 flex-wrap mb-2">'
         f'<span class="inline-flex items-center justify-center w-7 h-7 rounded-md '
         f'bg-[{TW["accent"]}] text-white font-bold text-xs flex-shrink-0">#{idx}</span>'
-        f'<a href="{repo["url"]}" target="_blank" '
+        f'<a href="{safe_href(repo.get("url", ""))}" target="_blank" '
         f'class="text-[{TW["accent"]}] font-semibold no-underline hover:underline">'
-        f'{repo["full_name"]}</a>'
+        f'{esc(repo.get("full_name", ""))}</a>'
         f'{trap_html} {badge_html}'
         f'</div>',
 
@@ -96,9 +95,9 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
         f'<div class="text-[{TW["dim"]}] text-sm mb-2 leading-relaxed">',
     ]
 
-    llm = llm_analyses.get(repo["full_name"], "")
+    llm = llm_analyses.get(repo.get("full_name", ""), "")
     if llm:
-        parts.append(llm.replace("\n", "<br>"))
+        parts.append(safe_text_br(llm))
     else:
         readme = readme_cache.get(repo["full_name"], "")
         if readme:
@@ -225,7 +224,7 @@ def generate_6section_report(
     )[:10]
 
     # ── 头部 ──
-    A, B, C, D, T, DI = TW["accent"], TW["border"], TW["bg"], TW["dim"], TW["text"], TW["code"]
+    A, B, C, T, DI = TW["accent"], TW["border"], TW["bg"], TW["text"], TW["dim"]
     G, O, P = TW["green"], TW["orange"], TW["purple"]
 
     header = f'''<!DOCTYPE html>
@@ -334,19 +333,18 @@ def generate_6section_report(
             t = "、".join(r.get("tags", [])[:2]) or "-"
             streak_rows += (
                 f'<tr class="border-b border-[{B}]">'
-                f'<td class="py-1.5 px-2.5"><a href="{r["url"]}" target="_blank" class="text-[{A}] no-underline">{r["full_name"]}</a></td>'
-                f'<td class="py-1.5 px-2.5">{r["streak_days"]}天</td>'
-                f'<td class="py-1.5 px-2.5">{r["stars"]:,}</td>'
-                f'<td class="py-1.5 px-2.5">{t}</td></tr>'
+                f'<td class="py-1.5 px-2.5"><a href="{safe_href(r.get("url", ""))}" target="_blank" class="text-[{A}] no-underline">{esc(r.get("full_name", ""))}</a></td>'
+                f'<td class="py-1.5 px-2.5">{r.get("streak_days", 0)}天</td>'
+                f'<td class="py-1.5 px-2.5">{r.get("stars", 0):,}</td>'
+                f'<td class="py-1.5 px-2.5">{esc(t)}</td></tr>'
             )
 
-    trend_block = ""
     trend_block = ""
     if trend_analysis:
         trend_block = (
             f'<h3 class="text-base font-semibold mt-5 mb-2 text-[{DI}]">趋势分析</h3>'
             f'<div class="bg-[{C}] border border-[{B}] rounded-xl p-4 mb-2.5 leading-relaxed">'
-            f'{trend_analysis.replace(chr(10), "<br>")}</div>'
+            f'{safe_text_br(trend_analysis)}</div>'
         )
 
     # ── 数据看板 ──

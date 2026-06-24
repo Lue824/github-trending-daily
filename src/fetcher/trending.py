@@ -4,8 +4,6 @@ GitHub Trending 页面爬虫
 """
 import re
 import logging
-from datetime import datetime
-from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup

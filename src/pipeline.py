@@ -5,7 +5,7 @@
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.fetcher.trending import fetch_all_trending
 from src.fetcher.search_api import fetch_all_api, fetch_readme
@@ -33,8 +33,8 @@ def run_pipeline(date_str: str = None) -> dict | None:
               yesterday_ranks, extra_cache, today, yesterday
         无数据时返回 None
     """
-    today = date_str or datetime.utcnow().strftime("%Y-%m-%d")
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    today = date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
 
     # 1. 初始化数据库
     init_db()

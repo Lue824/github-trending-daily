@@ -8,15 +8,11 @@
 """
 import json
 import logging
-import os
 import re
 
 import requests
 
 logger = logging.getLogger(__name__)
-
-# 项目方默认 key（仅基础模块用）
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 _INVALID_KEYS = ("", "sk-xxxxxxxxxxxx", "sk-xxx")
 
