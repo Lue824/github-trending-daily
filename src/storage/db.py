@@ -350,6 +350,29 @@ def get_monthly_stats() -> dict:
     }
 
 
+def _load_repos_from_json() -> list[dict]:
+    """从 JSON 文件读取仓库数据（HF Spaces 无 SQLite 时的回退方案）"""
+    from config import DATA_DIR
+    json_path = os.path.join(DATA_DIR, "repos.json")
+    if not os.path.exists(json_path):
+        return []
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        repos = data.get("repos", [])
+        # 字段名对齐：JSON 中是 extra_data，代码中是 _extra
+        for r in repos:
+            if "extra_data" in r and "_extra" not in r:
+                r["_extra"] = r.pop("extra_data")
+            r["is_focus"] = bool(r.get("is_focus", 0))
+            r["is_trap"] = bool(r.get("is_trap", 0))
+        logger.info(f"Loaded {len(repos)} repos from JSON fallback")
+        return repos
+    except Exception as e:
+        logger.error(f"Failed to load repos.json: {e}")
+        return []
+
+
 def get_today_repos(date_str: str = None) -> list[dict]:
     """从数据库读取当天的仓库列表（供 Web 自定义查询用，避免触发完整 pipeline）
 
@@ -389,23 +412,28 @@ def get_today_repos(date_str: str = None) -> list[dict]:
             "_extra": json.loads(row["extra_data"]) if row["extra_data"] else {},
         }
 
-    with db_transaction() as conn:
-        rows = conn.execute(
-            "SELECT * FROM daily_repos WHERE fetch_date = ? ORDER BY hot_score DESC",
-            (target,)
-        ).fetchall()
-        if rows:
-            return [_row_to_repo(dict(r)) for r in rows]
-
-        # 降级：取最新一天的数据
-        latest = conn.execute(
-            "SELECT fetch_date FROM daily_repos ORDER BY fetch_date DESC LIMIT 1"
-        ).fetchone()
-        if latest:
+    # 尝试从 SQLite 读取
+    try:
+        with db_transaction() as conn:
             rows = conn.execute(
                 "SELECT * FROM daily_repos WHERE fetch_date = ? ORDER BY hot_score DESC",
-                (latest["fetch_date"],)
+                (target,)
             ).fetchall()
-            return [_row_to_repo(dict(r)) for r in rows]
+            if rows:
+                return [_row_to_repo(dict(r)) for r in rows]
 
-    return []
+            # 降级：取最新一天的数据
+            latest = conn.execute(
+                "SELECT fetch_date FROM daily_repos ORDER BY fetch_date DESC LIMIT 1"
+            ).fetchone()
+            if latest:
+                rows = conn.execute(
+                    "SELECT * FROM daily_repos WHERE fetch_date = ? ORDER BY hot_score DESC",
+                    (latest["fetch_date"],)
+                ).fetchall()
+                return [_row_to_repo(dict(r)) for r in rows]
+    except Exception as e:
+        logger.warning(f"SQLite read failed, trying JSON fallback: {e}")
+
+    # JSON 回退（HF Spaces 无 SQLite）
+    return _load_repos_from_json()

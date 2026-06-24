@@ -69,6 +69,9 @@ def run_daily():
     # ── 保存摘要 ───────────────────────────────────────
     save_daily_summary(TODAY, repos, html_path)
 
+    # ── 导出 JSON（供 HF Spaces 自定义查询用，HF 不允许二进制 db 文件） ──
+    _export_repos_json(repos, TODAY)
+
     # ── 发送邮件 ───────────────────────────────────────
     logger.info("Step 10: Sending email...")
     subject = f"🚀 GitHub 每日热点 — {TODAY}"
@@ -87,6 +90,30 @@ def run_daily():
     cleanup_old_data()
 
     logger.info(f"=== Daily run complete: {TODAY} ===")
+
+
+def _export_repos_json(repos: list[dict], date_str: str):
+    """导出仓库数据为 JSON（HF Spaces 不允许二进制 db 文件，用 JSON 替代）"""
+    import json
+    from config import DATA_DIR
+    os.makedirs(DATA_DIR, exist_ok=True)
+    json_path = os.path.join(DATA_DIR, "repos.json")
+    # 序列化，去掉不可序列化的字段
+    clean_repos = []
+    for r in repos:
+        clean = {}
+        for k, v in r.items():
+            if k.startswith("_") and k != "_extra":
+                continue
+            try:
+                json.dumps(v)
+                clean[k] = v
+            except (TypeError, ValueError):
+                clean[k] = str(v)
+        clean_repos.append(clean)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({"date": date_str, "repos": clean_repos}, f, ensure_ascii=False, indent=2)
+    logger.info(f"Exported {len(clean_repos)} repos to {json_path}")
 
 
 def run_monthly():

@@ -48,7 +48,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # 强制添加（.gitignore 可能排除了一些文件）
-          git add data/reports/ data/trending.db data/subscription.json -f 2>/dev/null || true
+          git add data/reports/ data/trending.db data/repos.json data/subscription.json -f 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
