@@ -1,3 +1,13 @@
+---
+title: GitHub Trending Daily
+emoji: 🚀
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🚀 GitHub Trending Daily
 
 每天自动抓取 GitHub 热门/高星项目，生成 Markdown 日报 + 推送到 QQ 邮箱，持续感知 GitHub 热点。
