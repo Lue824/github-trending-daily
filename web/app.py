@@ -15,14 +15,15 @@ from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory
 
 # 确保 src 目录在路径中
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _BASE_DIR)
 
 from src.processor.custom_parser import parse_query, generate_sections
 from src.reporter.custom_report import generate_custom_report
 from src.storage.db import get_today_repos
 from src.reporter.daily_report import generate_6section_report
-from config import REPORTS_DIR
+from src.utils.crypto import encrypt_if_needed, decrypt_if_needed
+from config import REPORTS_DIR, DATA_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("web")
@@ -105,7 +106,7 @@ def api_custom():
 
     重要：从数据库读取 repos，不触发 run_pipeline()，避免 PythonAnywhere 超时
     """
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     query = (data.get("query", "") or request.args.get("query", "")).strip()
     api_key = (data.get("api_key", "") or "").strip()  # 用户自己的 key（可选）
     provider = (data.get("provider", "") or "").strip()  # 厂商（可选，自动识别）
@@ -130,7 +131,8 @@ def api_custom():
         sections = generate_sections(parsed.get("topic", query), parsed.get("keywords", []), api_key, provider)
         # 基础模块热门项目作为补充源（项目不足时去重补充）
         basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
-        html = generate_custom_report(repos, query, parsed, sections, basic_repos=basic_repos)
+        html = generate_custom_report(repos, query, parsed, sections, basic_repos=basic_repos,
+                                       api_key=api_key, provider=provider)
         return jsonify({
             "html": html,
             "topic": parsed.get("topic", query),
@@ -156,7 +158,7 @@ def api_subscribe():
         "api_key": "sk-xxx"         # type=custom 时必填（用户自己的 key）
     }
     """
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     sub_type = data.get("type", "basic")
     email = (data.get("email", "") or "").strip()
     if not email:
@@ -180,18 +182,39 @@ def api_subscribe():
             return jsonify({"ok": False, "msg": "自定义订阅需要 topic 和 keywords"}), 400
         subscription["topic"] = topic
         subscription["keywords"] = keywords
-        subscription["api_key"] = api_key  # 存仓库文件（用户选择）
+        subscription["api_key"] = api_key  # 明文，用于即时发邮件
         subscription["provider"] = provider
 
-    # 持久化到 data/subscription.json（使用 config.DATA_DIR，支持环境变量）
+    # 持久化到 data/subscription.json（列表格式，支持多订阅者）
     from config import DATA_DIR
     sub_path = os.path.join(DATA_DIR, "subscription.json")
     try:
+        # 读取现有订阅列表（兼容旧的单 dict 格式）
+        existing = []
+        if os.path.exists(sub_path):
+            with open(sub_path, "r", encoding="utf-8") as f:
+                old = json.load(f)
+            if isinstance(old, list):
+                existing = old
+            elif isinstance(old, dict):
+                existing = [old]
+
+        # 去重：同邮箱同类型只保留最新（解密已有邮箱进行比对）
+        existing = [s for s in existing
+                    if not (decrypt_if_needed(s.get("email", "")).lower() == email.lower()
+                            and s.get("type") == sub_type)]
+
+        # 构建加密版用于持久化存储
+        encrypted_sub = dict(subscription)
+        encrypted_sub["email"] = encrypt_if_needed(email)
+        encrypted_sub["api_key"] = encrypt_if_needed(subscription.get("api_key", ""))
+        existing.append(encrypted_sub)
+
         with open(sub_path, "w", encoding="utf-8") as f:
-            json.dump(subscription, f, ensure_ascii=False, indent=2)
+            json.dump(existing, f, ensure_ascii=False, indent=2)
         # 日志脱敏：不记录完整邮箱
         masked_email = email[:2] + "***" + email[email.index("@"):] if "@" in email else "***"
-        logger.info(f"Subscription saved: {sub_type} -> {masked_email}")
+        logger.info(f"Subscription saved: {sub_type} -> {masked_email} (total: {len(existing)})")
     except Exception as e:
         logger.error(f"Save subscription failed: {e}", exc_info=True)
         return jsonify({"ok": False, "msg": "保存订阅失败，请稍后重试"}), 500
@@ -219,6 +242,7 @@ def send_subscription_email(subscription: dict):
     重要：从数据库读取 repos，不触发 run_pipeline()，避免超时
     """
     from src.notifier.email_sender import send_email
+    from src.reporter.email_template import wrap_html_for_email
 
     email = subscription.get("email", "")
     sub_type = subscription.get("type", "basic")
@@ -234,6 +258,7 @@ def send_subscription_email(subscription: dict):
                     html = f.read()
             except Exception as e:
                 logger.warning(f"Failed to read report for email: {e}")
+        html = wrap_html_for_email(html) if html else html
         subject = f"🚀 GitHub 每日热点（基础日报）— {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
         send_email(subject, html, receiver=email)
     else:
@@ -251,7 +276,9 @@ def send_subscription_email(subscription: dict):
             parsed["keywords"] = keywords
         sections = generate_sections(parsed.get("topic", topic), parsed.get("keywords", []), api_key, provider)
         basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
-        html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos)
+        html = generate_custom_report(repos, topic, parsed, sections, basic_repos=basic_repos,
+                                       api_key=api_key, provider=provider)
+        html = wrap_html_for_email(html)
         subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
         send_email(subject, html, receiver=email)
 
@@ -262,11 +289,259 @@ def serve_report(filename):
     return send_from_directory(_REPORT_DIR, filename)
 
 
+@app.route("/api/status")
+def api_status():
+    """系统状态 — 加密状态、订阅者数、报告数"""
+    import glob
+    from src.utils.crypto import is_encrypted
+    from config import DATA_DIR
+
+    # Check .env encryption
+    env_sensitive = {"GITHUB_TOKEN", "QQ_EMAIL", "QQ_EMAIL_AUTH_CODE", "RECEIVER_EMAIL", "DEEPSEEK_API_KEY"}
+    env_encrypted = {}
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, _, v = s.partition("=")
+                k = k.strip()
+                v = v.strip()
+                if k in env_sensitive:
+                    env_encrypted[k] = is_encrypted(v)
+
+    # Check subscription.json encryption
+    sub_path = os.path.join(DATA_DIR, "subscription.json")
+    sub_encrypted = {"emails": 0, "api_keys": 0, "total": 0}
+    sub_count = 0
+    if os.path.exists(sub_path):
+        try:
+            with open(sub_path, "r", encoding="utf-8") as f:
+                subs = json.load(f)
+            if isinstance(subs, dict):
+                subs = [subs]
+            sub_count = len(subs)
+            for s in subs:
+                email = s.get("email", "")
+                api_key = s.get("api_key", "")
+                if email:
+                    sub_encrypted["total"] += 1
+                    if is_encrypted(email):
+                        sub_encrypted["emails"] += 1
+                if api_key:
+                    if is_encrypted(api_key):
+                        sub_encrypted["api_keys"] += 1
+        except Exception:
+            pass
+
+    # Report files
+    report_files = sorted(glob.glob(os.path.join(REPORTS_DIR, "daily-6s-*.html")), reverse=True)
+    latest_date = ""
+    if report_files:
+        latest_date = os.path.basename(report_files[0]).replace("daily-6s-", "").replace(".html", "")
+
+    # DB count
+    db_count = 0
+    try:
+        from src.storage.db import get_today_repos
+        db_count = len(get_today_repos())
+    except Exception:
+        pass
+
+    # Key file
+    from src.utils.crypto import _KEY_FILE
+    key_exists = os.path.exists(_KEY_FILE)
+
+    return jsonify({
+        "env_encrypted": env_encrypted,
+        "sub_encrypted": sub_encrypted,
+        "subscriber_count": sub_count,
+        "report_count": len(report_files),
+        "latest_report_date": latest_date,
+        "db_repo_count": db_count,
+        "key_file_exists": key_exists,
+    })
+
+
+@app.route("/api/subscriptions")
+def api_subscriptions():
+    """订阅列表 — 脱敏显示（不返回真实邮箱和 API Key）"""
+    from config import DATA_DIR
+    sub_path = os.path.join(DATA_DIR, "subscription.json")
+    if not os.path.exists(sub_path):
+        return jsonify({"subscriptions": []})
+    try:
+        with open(sub_path, "r", encoding="utf-8") as f:
+            subs = json.load(f)
+        if isinstance(subs, dict):
+            subs = [subs]
+        masked = []
+        for s in subs:
+            email = decrypt_if_needed(s.get("email", ""))
+            masked_email = email[:2] + "***" + email[email.index("@"):] if "@" in email else "***"
+            masked.append({
+                "type": s.get("type", "basic"),
+                "email": masked_email,
+                "topic": s.get("topic", ""),
+                "updated_at": s.get("updated_at", ""),
+                "provider": s.get("provider", ""),
+                "has_api_key": bool(s.get("api_key", "")),
+            })
+        return jsonify({"subscriptions": masked})
+    except Exception as e:
+        logger.error(f"Failed to read subscriptions: {e}")
+        return jsonify({"subscriptions": [], "error": "读取失败"}), 500
+
+
+@app.route("/api/unsubscribe", methods=["POST"])
+def api_unsubscribe():
+    """退订 — 根据邮箱删除订阅"""
+    from config import DATA_DIR
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email", "") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "msg": "请输入邮箱"}), 400
+
+    sub_path = os.path.join(DATA_DIR, "subscription.json")
+    if not os.path.exists(sub_path):
+        return jsonify({"ok": False, "msg": "无订阅记录"}), 404
+    try:
+        with open(sub_path, "r", encoding="utf-8") as f:
+            subs = json.load(f)
+        if isinstance(subs, dict):
+            subs = [subs]
+        original_count = len(subs)
+        # Filter out matching emails (decrypt for comparison)
+        subs = [s for s in subs if decrypt_if_needed(s.get("email", "")).lower() != email]
+        removed = original_count - len(subs)
+        if removed == 0:
+            return jsonify({"ok": False, "msg": "未找到对应订阅"}), 404
+        with open(sub_path, "w", encoding="utf-8") as f:
+            json.dump(subs, f, ensure_ascii=False, indent=2)
+        return jsonify({"ok": True, "msg": f"已退订 {removed} 个订阅"})
+    except Exception as e:
+        logger.error(f"Unsubscribe failed: {e}")
+        return jsonify({"ok": False, "msg": "退订失败"}), 500
+
+
+@app.route("/api/history")
+def api_history():
+    """历史报告列表"""
+    import glob
+    report_files = sorted(glob.glob(os.path.join(REPORTS_DIR, "daily-6s-*.html")), reverse=True)
+    history = []
+    for f in report_files[:30]:  # Latest 30
+        filename = os.path.basename(f)
+        date_str = filename.replace("daily-6s-", "").replace(".html", "")
+        size = os.path.getsize(f)
+        history.append({"date": date_str, "filename": filename, "size": size})
+    return jsonify({"history": history})
+
+
+@app.route("/api/tunnel_status")
+def api_tunnel_status():
+    """URL 隧道监控状态 — 读取 url_monitor 审计日志和当前 URL
+
+    返回：
+    - current_url: 当前隧道 URL
+    - last_check: 最近一次健康检查时间
+    - total_events: 审计日志总事件数
+    - recoveries: 自动恢复次数
+    - failures: 检测到故障次数
+    - alerts: 发送告警次数
+    - recent_events: 最近 10 条事件
+    - uptime_status: 运行状态（healthy/recovering/down/unknown）
+    """
+    from config import DATA_DIR
+
+    result = {
+        "current_url": "",
+        "last_check": "",
+        "total_events": 0,
+        "recoveries": 0,
+        "failures": 0,
+        "alerts": 0,
+        "recent_events": [],
+        "uptime_status": "unknown",
+        "monitor_running": False,
+    }
+
+    # 当前隧道 URL — 兼容两种存储位置：
+    #   1) DATA_DIR/current_url.txt （data/ 子目录）
+    #   2) 项目根目录 current_url.txt （start_tunnel.ps1 默认存储位置）
+    url_file = os.path.join(DATA_DIR, "current_url.txt")
+    if not os.path.exists(url_file):
+        url_file = os.path.join(_BASE_DIR, "current_url.txt")
+    if os.path.exists(url_file):
+        try:
+            with open(url_file, "r", encoding="utf-8-sig") as f:
+                result["current_url"] = f.read().strip()
+        except Exception:
+            pass
+
+    # 审计日志
+    audit_file = os.path.join(DATA_DIR, "logs", "url_monitor_audit.jsonl")
+    if os.path.exists(audit_file):
+        try:
+            events = []
+            with open(audit_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            events.append(json.loads(line))
+                        except Exception:
+                            pass
+            result["total_events"] = len(events)
+            for e in events:
+                # 兼容 event_type / event 两种字段名
+                etype = e.get("event_type", "") or e.get("event", "")
+                if etype in ("recovery_success", "recovery_completed", "url_recovered"):
+                    result["recoveries"] += 1
+                elif etype in ("health_check_failed", "url_invalid", "url_check_failed"):
+                    result["failures"] += 1
+                elif etype in ("critical_alert_sent", "notification_sent"):
+                    result["alerts"] += 1
+            # 最近 10 条事件（倒序）
+            result["recent_events"] = list(reversed(events[-10:]))
+            if events:
+                result["last_check"] = events[-1].get("timestamp", "")
+            # 推断状态
+            if result["current_url"]:
+                if result["failures"] == 0:
+                    result["uptime_status"] = "healthy"
+                elif result["recoveries"] > 0:
+                    result["uptime_status"] = "recovering"
+                else:
+                    result["uptime_status"] = "down"
+            # 监控守护进程是否在运行（最近 5 分钟内有日志）
+            if events:
+                try:
+                    from datetime import datetime as _dt, timezone as _tz
+                    last_ts = events[-1].get("timestamp", "")
+                    if last_ts:
+                        last_dt = _dt.fromisoformat(last_ts.replace("Z", "+00:00"))
+                        now_dt = _dt.now(_tz.utc)
+                        if (now_dt - last_dt).total_seconds() < 300:
+                            result["monitor_running"] = True
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Failed to read tunnel audit log: {e}")
+
+    return jsonify(result)
+
+
 def _render_index(mode: str = "basic", report_content: str = "") -> str:
     """渲染主页面"""
     tabs = [
         {"id": "basic", "label": "📊 基础日报", "desc": "6板块多维评价"},
         {"id": "custom", "label": "🔧 自定义", "desc": "输入话题生成专属日报"},
+        {"id": "dashboard", "label": "📈 数据面板", "desc": "加密/监控/系统统计"},
+        {"id": "manage", "label": "📬 订阅管理", "desc": "查看与退订"},
+        {"id": "arch", "label": "🏗️ 架构", "desc": "技术栈与系统设计"},
     ]
     tabs_html = ""
     for t in tabs:
@@ -353,6 +628,185 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
             </div>
             <div id="subMsg" style="margin-top:12px;font-size:0.85em;text-align:center"></div>
         </div>
+    </div>
+    """
+
+    dashboard_placeholder = """
+    <div style="padding:20px;max-width:1100px;margin:0 auto;">
+        <div id="dashboardContent" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+            <div class="skeleton-card" style="grid-column:1/-1;">加载中...</div>
+        </div>
+        <div id="tunnelCard" class="tunnel-card-dash" style="display:none;"></div>
+        <div id="historyList" style="margin-top:20px;"></div>
+    </div>
+    """
+
+    manage_placeholder = """
+    <div style="padding:20px;max-width:800px;margin:0 auto;">
+        <h2 style="color:var(--text);margin-bottom:16px;">📬 订阅管理</h2>
+        <div id="subList" style="margin-bottom:24px;">加载中...</div>
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;">
+            <h3 style="color:var(--text);margin-bottom:12px;font-size:1em;">退订</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input type="email" id="unsubEmail" placeholder="输入要退订的邮箱"
+                       style="flex:1;min-width:240px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);">
+                <button onclick="doUnsubscribe()" style="padding:10px 24px;border-radius:8px;background:var(--accent-red);color:#fff;border:none;cursor:pointer;">退订</button>
+            </div>
+            <div id="unsubMsg" style="margin-top:10px;font-size:0.85em;"></div>
+        </div>
+    </div>
+    """
+
+    arch_placeholder = """
+    <div class="arch-container">
+        <!-- Hero 简介 -->
+        <section class="arch-hero">
+            <div class="arch-hero-tag">🏆 TRAE AI 创造力大赛参赛作品</div>
+            <h2 class="arch-hero-title">GitHub Trending Daily</h2>
+            <p class="arch-hero-subtitle">基于 TRAE IDE 全程开发的 GitHub 热门项目智能日报系统</p>
+            <div class="arch-hero-stats">
+                <div class="hero-stat"><span class="num" id="archStatRepos">—</span><span class="lbl">已索引项目</span></div>
+                <div class="hero-stat"><span class="num" id="archStatReports">—</span><span class="lbl">累计报告</span></div>
+                <div class="hero-stat"><span class="num" id="archStatSubs">—</span><span class="lbl">订阅用户</span></div>
+                <div class="hero-stat"><span class="num" id="archStatEnc">—</span><span class="lbl">加密字段</span></div>
+            </div>
+        </section>
+
+        <!-- 三步引导 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">1</span>体验路径</h3>
+            <div class="arch-steps">
+                <div class="arch-step" onclick="switchTab('basic')">
+                    <div class="arch-step-icon">📊</div>
+                    <div class="arch-step-title">浏览今日热门</div>
+                    <div class="arch-step-desc">6 板块多维评分日报</div>
+                </div>
+                <div class="arch-step-arrow">→</div>
+                <div class="arch-step" onclick="switchTab('custom')">
+                    <div class="arch-step-icon">🔧</div>
+                    <div class="arch-step-title">自定义话题</div>
+                    <div class="arch-step-desc">AI 解析生成专属日报</div>
+                </div>
+                <div class="arch-step-arrow">→</div>
+                <div class="arch-step" onclick="switchTab('manage')">
+                    <div class="arch-step-icon">📬</div>
+                    <div class="arch-step-title">订阅推送</div>
+                    <div class="arch-step-desc">每日邮件直达</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pipeline 流程图 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">2</span>数据流水线（9 步全自动）</h3>
+            <div class="arch-pipeline">
+                <div class="pipe-step"><span class="pipe-icon">🌐</span><span class="pipe-name">GitHub Trending 抓取</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">🗂️</span><span class="pipe-name">去重入库 SQLite</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">📈</span><span class="pipe-name">6 维评分引擎</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">🤖</span><span class="pipe-name">AI 深度分析</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">📄</span><span class="pipe-name">HTML 报告生成</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">🔒</span><span class="pipe-name">加密订阅邮箱</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">📧</span><span class="pipe-name">邮件推送</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">🌐</span><span class="pipe-name">Cloudflare Tunnel</span></div>
+                <div class="pipe-arrow">→</div>
+                <div class="pipe-step"><span class="pipe-icon">📡</span><span class="pipe-name">URL 健康监控</span></div>
+            </div>
+            <p class="arch-note">⏰ 每日 UTC 00:00 GitHub Actions 自动触发，全程无人工干预。</p>
+        </section>
+
+        <!-- 技术栈 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">3</span>技术栈</h3>
+            <div class="arch-tech-grid">
+                <div class="tech-card"><div class="tech-icon">🐍</div><div class="tech-name">Python + Flask</div><div class="tech-desc">Web 服务 / pipeline 编排</div></div>
+                <div class="tech-card"><div class="tech-icon">🔒</div><div class="tech-name">Fernet 加密</div><div class="tech-desc">AES-128-CBC + HMAC-SHA256</div></div>
+                <div class="tech-card"><div class="tech-icon">🤖</div><div class="tech-name">6 家 LLM 接入</div><div class="tech-desc">DeepSeek/OpenAI/Claude/通义/智谱/Kimi</div></div>
+                <div class="tech-card"><div class="tech-icon">📊</div><div class="tech-name">SQLite + 6 维评分</div><div class="tech-desc">爆发度/质量/潜力/陷阱/AI 雷达</div></div>
+                <div class="tech-card"><div class="tech-icon">🌐</div><div class="tech-name">Cloudflare Tunnel</div><div class="tech-desc">本地服务公网暴露 + 自动恢复</div></div>
+                <div class="tech-card"><div class="tech-icon">⚡</div><div class="tech-name">GitHub Actions</div><div class="tech-desc">每日定时全自动 pipeline</div></div>
+                <div class="tech-card"><div class="tech-icon">📡</div><div class="tech-name">URL 监控守护</div><div class="tech-desc">健康检查 + 自动重建 + 告警</div></div>
+                <div class="tech-card"><div class="tech-icon">📧</div><div class="tech-name">QQ 邮箱推送</div><div class="tech-desc">每日报告自动邮件分发</div></div>
+            </div>
+        </section>
+
+        <!-- 加密安全 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">4</span>数据安全设计</h3>
+            <div class="arch-security">
+                <div class="sec-card">
+                    <div class="sec-header"><span class="sec-icon">🔐</span><span class="sec-title">Fernet 对称加密</span></div>
+                    <p class="sec-desc">采用 <code>AES-128-CBC + HMAC-SHA256</code> 组合算法。HMAC 防篡改 + CBC 抗模式分析，密钥由 <code>Fernet.generate_key()</code> 一次性生成并落盘 <code>data/.secret_key</code>。</p>
+                </div>
+                <div class="sec-card">
+                    <div class="sec-header"><span class="sec-icon">📧</span><span class="sec-title">敏感字段加密</span></div>
+                    <p class="sec-desc">订阅者邮箱、开发者邮箱、所有 API Key（GitHub Token / DeepSeek / 6 家 LLM）写入前自动加密，前缀 <code>ENC:</code> 标识。读取时透明解密，列表展示自动脱敏 <code>xx***@domain</code>。</p>
+                </div>
+                <div class="sec-card">
+                    <div class="sec-header"><span class="sec-icon">🔑</span><span class="sec-title">密钥管理</span></div>
+                    <p class="sec-desc">单例模式保证全局唯一密钥；<code>.secret_key</code> 文件不入版本库；首次启动自动生成；密钥丢失则历史加密数据不可解密（前向安全特性）。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 多 LLM 厂商 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">5</span>多 LLM 厂商接入（4 层防御解析）</h3>
+            <div class="arch-llm-grid">
+                <div class="llm-card"><div class="llm-logo">🔮</div><div class="llm-name">DeepSeek</div><div class="llm-model">deepseek-chat</div></div>
+                <div class="llm-card"><div class="llm-logo">🟢</div><div class="llm-name">OpenAI</div><div class="llm-model">gpt-4o-mini</div></div>
+                <div class="llm-card"><div class="llm-logo">🟣</div><div class="llm-name">Anthropic</div><div class="llm-model">claude-3-5-haiku</div></div>
+                <div class="llm-card"><div class="llm-logo">🔵</div><div class="llm-name">通义千问</div><div class="llm-model">qwen-turbo</div></div>
+                <div class="llm-card"><div class="llm-logo">🟠</div><div class="llm-name">智谱清言</div><div class="llm-model">glm-4-flash</div></div>
+                <div class="llm-card"><div class="llm-logo">🌙</div><div class="llm-name">Moonshot Kimi</div><div class="llm-model">moonshot-v1-8k</div></div>
+            </div>
+            <p class="arch-note">🛡️ 解析 4 层防御：<code>规则匹配</code> → <code>LLM 解析</code> → <code>关键词兜底</code> → <code>降级保护</code>。用户可自带 key 走个人化解析，不消耗项目方额度。</p>
+        </section>
+
+        <!-- 话题模板 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">6</span>话题模板库（32 个领域）</h3>
+            <div class="arch-topics">
+                <span class="topic-chip">AI Agent</span><span class="topic-chip">大模型</span><span class="topic-chip">文生图</span><span class="topic-chip">语音AI</span><span class="topic-chip">具身智能</span>
+                <span class="topic-chip">量化交易</span><span class="topic-chip">金融</span><span class="topic-chip">游戏开发</span><span class="topic-chip">前端框架</span><span class="topic-chip">后端框架</span>
+                <span class="topic-chip">数据库</span><span class="topic-chip">DevOps</span><span class="topic-chip">CLI 工具</span><span class="topic-chip">安全工具</span><span class="topic-chip">Rust 生态</span>
+                <span class="topic-chip">Python 生态</span><span class="topic-chip">Go 生态</span><span class="topic-chip">TypeScript</span><span class="topic-chip">区块链</span><span class="topic-chip">机器人</span>
+                <span class="topic-chip">视频处理</span><span class="topic-chip">桌面应用</span><span class="topic-chip">移动开发</span><span class="topic-chip">云计算</span><span class="topic-chip">API 开发</span>
+                <span class="topic-chip">数据科学</span><span class="topic-chip">设计工具</span><span class="topic-chip">浏览器</span><span class="topic-chip">监控运维</span><span class="topic-chip">教育教程</span>
+                <span class="topic-chip">嵌入式开发</span><span class="topic-chip">电子信息</span><span class="topic-chip">物联网</span><span class="topic-chip">硬件设计</span><span class="topic-chip">信号处理</span>
+                <span class="topic-chip">电力系统</span><span class="topic-chip">自动驾驶</span><span class="topic-chip">机械制造</span><span class="topic-chip">生物医学</span><span class="topic-chip">土木建筑</span>
+            </div>
+        </section>
+
+        <!-- URL 监控 -->
+        <section class="arch-section">
+            <h3 class="arch-section-title"><span class="arch-num">7</span>URL 健康监控守护</h3>
+            <div class="arch-tunnel" id="archTunnelCard">
+                <div class="tunnel-row">
+                    <span class="tunnel-label">📡 当前隧道</span>
+                    <a href="#" id="archTunnelUrl" target="_blank" class="tunnel-url">加载中...</a>
+                </div>
+                <div class="tunnel-row">
+                    <span class="tunnel-label">🟢 运行状态</span>
+                    <span id="archTunnelStatus" class="tunnel-status">—</span>
+                </div>
+                <div class="tunnel-row">
+                    <span class="tunnel-label">🔄 自动恢复</span>
+                    <span id="archTunnelRecoveries" class="tunnel-metric">—</span>
+                </div>
+                <div class="tunnel-row">
+                    <span class="tunnel-label">⚠️ 故障次数</span>
+                    <span id="archTunnelFailures" class="tunnel-metric">—</span>
+                </div>
+            </div>
+            <p class="arch-note">📡 监控守护进程：检测 HTTP 4xx/5xx、超时、DNS 失败 → 自动 kill+重启 cloudflared → 提取新 URL → 邮件通知订阅者与开发者。完整 JSONL 审计日志。</p>
+        </section>
     </div>
     """
 
@@ -936,17 +1390,566 @@ footer {{
     font-size: 0.85em;
     line-height: 1.6;
 }}
+/* === 卡片悬停增强 === */
+.custom-card, .summary-item {{
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}}
+.custom-card:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    border-color: var(--accent);
+}}
+.summary-item:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(88,166,255,0.15);
+}}
+/* === 内容区过渡 === */
+.content-area {{
+    transition: opacity 0.3s ease;
+}}
+/* === 数据面板状态卡片 === */
+.status-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.2s ease;
+}}
+.status-card:hover {{
+    border-color: var(--accent);
+    transform: translateY(-2px);
+}}
+.status-card .icon {{
+    font-size: 2em;
+    margin-bottom: 8px;
+}}
+.status-card .num {{
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--accent);
+}}
+.status-card .label {{
+    font-size: 0.8em;
+    color: var(--text-dim);
+    margin-top: 4px;
+}}
+.status-card .badge-ok {{
+    color: var(--accent-green);
+    font-size: 1.4em;
+    font-weight: 700;
+}}
+.status-card .badge-warn {{
+    color: var(--accent-orange);
+    font-size: 1.4em;
+    font-weight: 700;
+}}
+/* === 订阅条目 === */
+.sub-item {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+}}
+.sub-item:hover {{
+    border-color: var(--accent);
+}}
+.sub-item .sub-info {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}}
+.sub-item .sub-type {{
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.75em;
+    font-weight: 600;
+}}
+.sub-type.basic {{
+    background: rgba(88,166,255,0.15);
+    color: var(--accent);
+}}
+.sub-type.custom {{
+    background: rgba(163,113,247,0.15);
+    color: var(--accent-purple);
+}}
+/* === 历史条目 === */
+.history-item {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}}
+.history-item:hover {{
+    border-color: var(--accent);
+    background: rgba(88,166,255,0.04);
+}}
+/* === 淡入动画 === */
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(8px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+.fade-in {{
+    animation: fadeIn 0.3s ease;
+}}
+
+/* ═══ 架构 Tab 样式 ═══ */
+.arch-container {{
+    padding: 24px 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}}
+.arch-hero {{
+    text-align: center;
+    padding: 36px 24px;
+    background: linear-gradient(135deg, rgba(88,166,255,0.10) 0%, rgba(163,113,247,0.10) 50%, rgba(63,185,80,0.10) 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+}}
+.arch-hero::before {{
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle at center, rgba(88,166,255,0.08) 0%, transparent 50%);
+    animation: heroGlow 8s ease-in-out infinite alternate;
+    pointer-events: none;
+}}
+@keyframes heroGlow {{
+    from {{ transform: rotate(0deg) scale(1); }}
+    to {{ transform: rotate(180deg) scale(1.2); }}
+}}
+.arch-hero-tag {{
+    display: inline-block;
+    padding: 4px 12px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 12px;
+    font-size: 0.78em;
+    margin-bottom: 12px;
+    font-weight: 600;
+    position: relative;
+    z-index: 1;
+}}
+.arch-hero-title {{
+    font-size: 2.2em;
+    margin: 0 0 8px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-purple), var(--accent-green));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+    position: relative;
+    z-index: 1;
+}}
+.arch-hero-subtitle {{
+    color: var(--text-dim);
+    font-size: 1.05em;
+    margin: 0 0 24px;
+    position: relative;
+    z-index: 1;
+}}
+.arch-hero-stats {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+    max-width: 720px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+}}
+.hero-stat {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 8px;
+    transition: transform 0.2s;
+}}
+.hero-stat:hover {{ transform: translateY(-2px); border-color: var(--accent); }}
+.hero-stat .num {{
+    display: block;
+    font-size: 1.6em;
+    font-weight: 700;
+    color: var(--accent);
+}}
+.hero-stat .lbl {{
+    display: block;
+    color: var(--text-dim);
+    font-size: 0.78em;
+    margin-top: 2px;
+}}
+.arch-section {{
+    margin-bottom: 28px;
+}}
+.arch-section-title {{
+    color: var(--text);
+    font-size: 1.15em;
+    margin: 0 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}}
+.arch-num {{
+    display: inline-flex;
+    width: 28px; height: 28px;
+    align-items: center; justify-content: center;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.85em;
+    font-weight: 700;
+}}
+.arch-steps {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}}
+.arch-step {{
+    flex: 1;
+    min-width: 200px;
+    max-width: 280px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+}}
+.arch-step:hover {{
+    transform: translateY(-3px);
+    border-color: var(--accent);
+    box-shadow: 0 6px 20px rgba(88,166,255,0.15);
+}}
+.arch-step-icon {{ font-size: 1.8em; margin-bottom: 8px; }}
+.arch-step-title {{ color: var(--text); font-weight: 600; margin-bottom: 4px; }}
+.arch-step-desc {{ color: var(--text-dim); font-size: 0.82em; }}
+.arch-step-arrow {{
+    color: var(--accent);
+    font-size: 1.6em;
+    font-weight: 300;
+}}
+.arch-pipeline {{
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    justify-content: center;
+}}
+.pipe-step {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-width: 110px;
+    transition: all 0.2s;
+}}
+.pipe-step:hover {{
+    border-color: var(--accent);
+    transform: scale(1.04);
+}}
+.pipe-icon {{ font-size: 1.4em; margin-bottom: 4px; }}
+.pipe-name {{ font-size: 0.76em; color: var(--text); text-align: center; line-height: 1.2; }}
+.pipe-arrow {{
+    color: var(--accent);
+    font-size: 1.2em;
+}}
+.arch-note {{
+    color: var(--text-dim);
+    font-size: 0.82em;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(88,166,255,0.05);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+}}
+.arch-note code {{
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--accent-green);
+    font-size: 0.95em;
+}}
+.arch-tech-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}}
+.tech-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    transition: all 0.2s;
+}}
+.tech-card:hover {{
+    transform: translateX(2px);
+    border-color: var(--accent);
+}}
+.tech-icon {{ font-size: 1.5em; }}
+.tech-name {{ color: var(--text); font-weight: 600; font-size: 0.95em; }}
+.tech-desc {{ color: var(--text-dim); font-size: 0.78em; margin-top: 2px; }}
+.arch-security {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+}}
+.sec-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    border-left: 3px solid var(--accent-green);
+}}
+.sec-header {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}}
+.sec-icon {{ font-size: 1.3em; }}
+.sec-title {{ color: var(--text); font-weight: 600; font-size: 0.98em; }}
+.sec-desc {{
+    color: var(--text-dim);
+    font-size: 0.82em;
+    line-height: 1.6;
+    margin: 0;
+}}
+.sec-desc code {{
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--accent-green);
+    font-size: 0.92em;
+}}
+.arch-llm-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+}}
+.llm-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align: center;
+    transition: all 0.2s;
+}}
+.llm-card:hover {{
+    transform: translateY(-2px);
+    border-color: var(--accent-purple);
+    box-shadow: 0 4px 12px rgba(163,113,247,0.15);
+}}
+.llm-logo {{ font-size: 1.8em; margin-bottom: 6px; }}
+.llm-name {{ color: var(--text); font-weight: 600; font-size: 0.92em; }}
+.llm-model {{ color: var(--text-dim); font-size: 0.74em; margin-top: 2px; font-family: monospace; }}
+.arch-topics {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}}
+.topic-chip {{
+    display: inline-block;
+    padding: 5px 11px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text);
+    font-size: 0.82em;
+    transition: all 0.2s;
+    cursor: default;
+}}
+.topic-chip:hover {{
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
+}}
+.arch-tunnel {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+}}
+.tunnel-row {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 8px;
+}}
+.tunnel-row:last-child {{ border-bottom: none; }}
+.tunnel-label {{
+    color: var(--text-dim);
+    font-size: 0.88em;
+}}
+.tunnel-url {{
+    color: var(--accent);
+    font-family: monospace;
+    font-size: 0.86em;
+    word-break: break-all;
+    text-decoration: none;
+}}
+.tunnel-url:hover {{ text-decoration: underline; }}
+.tunnel-status {{
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.82em;
+    font-weight: 600;
+}}
+.tunnel-status.healthy {{ background: rgba(63,185,80,0.18); color: var(--accent-green); }}
+.tunnel-status.recovering {{ background: rgba(210,153,29,0.18); color: var(--accent-orange); }}
+.tunnel-status.down {{ background: rgba(248,81,73,0.18); color: var(--accent-red); }}
+.tunnel-status.unknown {{ background: rgba(139,148,158,0.18); color: var(--text-dim); }}
+.tunnel-metric {{
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.95em;
+}}
+
+/* 响应式补充 */
+@media (max-width: 768px) {{
+    .arch-hero-title {{ font-size: 1.6em; }}
+    .arch-steps {{ flex-direction: column; }}
+    .arch-step-arrow {{ transform: rotate(90deg); }}
+    .arch-step {{ max-width: 100%; }}
+    .pipe-step {{ min-width: 90px; padding: 8px 6px; }}
+    .pipe-name {{ font-size: 0.7em; }}
+    .arch-tech-grid {{ grid-template-columns: 1fr; }}
+}}
+
+/* ═══ 骨架屏（加载占位） ═══ */
+.skeleton-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    color: var(--text-dim);
+    position: relative;
+    overflow: hidden;
+}}
+.skeleton-card::after {{
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(88,166,255,0.08), transparent);
+    animation: skeletonShimmer 1.5s infinite;
+}}
+@keyframes skeletonShimmer {{
+    0% {{ left: -100%; }}
+    100% {{ left: 100%; }}
+}}
+
+/* ═══ Dashboard URL 监控卡片 ═══ */
+.tunnel-card-dash {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent-purple);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    animation: fadeInUp 0.4s ease;
+}}
+.tunnel-card-head {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}}
+.tunnel-card-title {{
+    color: var(--text);
+    font-weight: 700;
+    font-size: 1.05em;
+}}
+.tunnel-card-body {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 12px;
+}}
+.tunnel-metric {{
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}}
+.tunnel-metric-label {{
+    color: var(--text-dim);
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}}
+.tunnel-url {{
+    color: var(--accent);
+    text-decoration: none;
+    word-break: break-all;
+    font-size: 0.92em;
+}}
+.tunnel-url:hover {{ text-decoration: underline; }}
+.tunnel-num {{
+    color: var(--text);
+    font-weight: 600;
+    font-size: 1.05em;
+}}
+.tunnel-card-foot {{
+    color: var(--text-dim);
+    font-size: 0.8em;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}}
+@keyframes fadeInUp {{
+    from {{ opacity: 0; transform: translateY(8px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
 </style>
 </head>
 <body>
 <div class="top-bar">
-        <div style="display:flex;align-items:center;gap:12px">
-            <span class="brand-icon">🚀</span>
-            <h1 style="font-size:1.4em;margin:0;color:var(--text)">GitHub 每日热点</h1>
-            <span style="color:var(--text-dim);font-size:0.8em">基础日报 + 自定义话题</span>
+    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+        <span class="brand-icon" style="font-size:1.6em">🚀</span>
+        <div style="min-width:0">
+            <h1 style="font-size:1.4em;margin:0;color:var(--text);background:linear-gradient(90deg,var(--accent),var(--accent-purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700">GitHub Trending Daily</h1>
+            <span style="color:var(--text-dim);font-size:0.78em">🏆 TRAE AI 创造力大赛 · GitHub 热门项目智能日报系统</span>
         </div>
+    </div>
     <div class="actions">
         <span id="reportDate" style="color:var(--text-dim);font-size:0.85em"></span>
+        <button class="btn" onclick="switchTab('arch')" style="background:var(--bg-card);border:1px solid var(--accent-purple);color:var(--accent-purple)">🏗️ 架构</button>
         <button class="btn btn-primary" onclick="refreshData()">🔄 刷新数据</button>
     </div>
 </div>
@@ -986,7 +1989,7 @@ function switchTab(mode) {{
         fetchWithTimeout('/api/daily')
             .then(r => r.json())
             .then(data => {{
-                document.getElementById('content').innerHTML = data.html;
+                document.getElementById('content').innerHTML = '<div class="fade-in">' + data.html + '</div>';
                 document.getElementById('reportDate').textContent = '📅 ' + data.date;
                 hideSpinner();
             }})
@@ -1006,6 +2009,16 @@ function switchTab(mode) {{
         if (providerSelect) {{
             providerSelect.value = localStorage.getItem('llm_provider') || 'deepseek';
         }}
+    }} else if (mode === 'dashboard') {{
+        document.getElementById('content').innerHTML = `{dashboard_placeholder}`;
+        loadDashboard();
+    }} else if (mode === 'manage') {{
+        document.getElementById('content').innerHTML = `{manage_placeholder}`;
+        loadSubscriptions();
+    }} else if (mode === 'arch') {{
+        document.getElementById('content').innerHTML = `{arch_placeholder}`;
+        loadArchData();
+        loadTunnelStatus();
     }}
 }}
 
@@ -1156,6 +2169,232 @@ document.addEventListener('DOMContentLoaded', function() {{
             hideSpinner();
         }});
 }});
+
+function loadDashboard() {{
+    fetchWithTimeout('/api/status')
+        .then(r => r.json())
+        .then(data => {{
+            var envEnc = data.env_encrypted || {{}};
+            var allEnvEnc = Object.keys(envEnc).length > 0 && Object.values(envEnc).every(v => v);
+            var subEnc = data.sub_encrypted || {{}};
+            var allSubEnc = subEnc.total > 0 && subEnc.emails === subEnc.total;
+
+            var html = '';
+            html += '<div class="status-card fade-in"><div class="icon">🔒</div>';
+            html += '<div class="' + (allEnvEnc ? 'badge-ok' : 'badge-warn') + '">' + (allEnvEnc ? '✓' : '!') + '</div>';
+            html += '<div class="label">.env 加密</div></div>';
+
+            html += '<div class="status-card fade-in"><div class="icon">📧</div>';
+            html += '<div class="num">' + (data.subscriber_count || 0) + '</div>';
+            html += '<div class="label">订阅者</div></div>';
+
+            html += '<div class="status-card fade-in"><div class="icon">📄</div>';
+            html += '<div class="num">' + (data.report_count || 0) + '</div>';
+            html += '<div class="label">历史报告</div></div>';
+
+            html += '<div class="status-card fade-in"><div class="icon">📦</div>';
+            html += '<div class="num">' + (data.db_repo_count || 0) + '</div>';
+            html += '<div class="label">今日项目</div></div>';
+
+            html += '<div class="status-card fade-in"><div class="icon">📅</div>';
+            html += '<div class="num" style="font-size:1.1em;">' + (data.latest_report_date || 'N/A') + '</div>';
+            html += '<div class="label">最新报告</div></div>';
+
+            html += '<div class="status-card fade-in"><div class="icon">🔑</div>';
+            html += '<div class="' + (data.key_file_exists ? 'badge-ok' : 'badge-warn') + '">' + (data.key_file_exists ? '✓' : '✗') + '</div>';
+            html += '<div class="label">密钥文件</div></div>';
+
+            document.getElementById('dashboardContent').innerHTML = html;
+
+            // Load tunnel status (URL 监控守护)
+            loadTunnelCard();
+            // Load history
+            return fetchWithTimeout('/api/history');
+        }})
+        .then(r => r.json())
+        .then(data => {{
+            var histHtml = '<h3 style="color:var(--text);margin-bottom:12px;font-size:1em;">📂 历史报告</h3>';
+            if (!data.history || data.history.length === 0) {{
+                histHtml += '<p style="color:var(--text-dim);text-align:center;padding:20px;">暂无历史报告</p>';
+            }} else {{
+                data.history.forEach(function(h) {{
+                    var sizeKb = Math.round(h.size / 1024);
+                    histHtml += '<div class="history-item" onclick="loadHistoryReport(\\'' + h.filename + '\\')">';
+                    histHtml += '<span style="color:var(--accent);">📅 ' + h.date + '</span>';
+                    histHtml += '<span style="color:var(--text-dim);font-size:0.85em;">' + sizeKb + ' KB</span>';
+                    histHtml += '</div>';
+                }});
+            }}
+            document.getElementById('historyList').innerHTML = histHtml;
+        }})
+        .catch(e => {{
+            document.getElementById('dashboardContent').innerHTML = '<p style="color:var(--accent-red);text-align:center;padding:40px;">加载失败</p>';
+        }});
+}}
+
+function loadHistoryReport(filename) {{
+    showSpinner();
+    fetchWithTimeout('/reports/' + filename)
+        .then(r => r.text())
+        .then(html => {{
+            document.getElementById('content').innerHTML = html;
+            hideSpinner();
+        }})
+        .catch(e => {{
+            hideSpinner();
+            alert('加载失败: ' + e);
+        }});
+}}
+
+function loadSubscriptions() {{
+    fetchWithTimeout('/api/subscriptions')
+        .then(r => r.json())
+        .then(data => {{
+            var subs = data.subscriptions || [];
+            var html = '<h3 style="color:var(--text);margin-bottom:12px;font-size:1em;">当前订阅 (' + subs.length + ')</h3>';
+            if (subs.length === 0) {{
+                html += '<p style="color:var(--text-dim);text-align:center;padding:20px;">暂无订阅</p>';
+            }} else {{
+                subs.forEach(function(s) {{
+                    var typeClass = s.type === 'custom' ? 'custom' : 'basic';
+                    var typeLabel = s.type === 'custom' ? '🔧 自定义' : '📊 基础';
+                    html += '<div class="sub-item fade-in">';
+                    html += '<div class="sub-info">';
+                    html += '<span class="sub-type ' + typeClass + '">' + typeLabel + '</span>';
+                    html += '<span style="color:var(--text);">' + s.email + '</span>';
+                    if (s.topic) {{
+                        html += '<span style="color:var(--text-dim);font-size:0.8em;">话题: ' + s.topic + '</span>';
+                    }}
+                    html += '</div>';
+                    html += '<span style="color:var(--text-dim);font-size:0.75em;">' + (s.updated_at || '') + '</span>';
+                    html += '</div>';
+                }});
+            }}
+            document.getElementById('subList').innerHTML = html;
+        }})
+        .catch(e => {{
+            document.getElementById('subList').innerHTML = '<p style="color:var(--accent-red);">加载失败</p>';
+        }});
+}}
+
+function doUnsubscribe() {{
+    var email = document.getElementById('unsubEmail').value.trim();
+    if (!email) {{ alert('请输入邮箱'); return; }}
+    var msg = document.getElementById('unsubMsg');
+    msg.innerHTML = '<span style="color:var(--text-dim)">处理中...</span>';
+    fetchWithTimeout('/api/unsubscribe', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{email: email}})
+    }})
+    .then(r => r.json())
+    .then(data => {{
+        if (data.ok) {{
+            msg.innerHTML = '<span style="color:var(--accent-green)">✅ ' + data.msg + '</span>';
+            loadSubscriptions();
+        }} else {{
+            msg.innerHTML = '<span style="color:var(--accent-red)">❌ ' + data.msg + '</span>';
+        }}
+    }})
+    .catch(e => {{
+        msg.innerHTML = '<span style="color:var(--accent-red)">退订失败: ' + e + '</span>';
+    }});
+}}
+
+// ═══ Dashboard：URL 监控守护状态卡片 ═══
+function loadTunnelCard() {{
+    fetchWithTimeout('/api/tunnel_status')
+        .then(r => r.json())
+        .then(data => {{
+            var card = document.getElementById('tunnelCard');
+            if (!card) return;
+            var statusMap = {{
+                'healthy': {{text: '🟢 健康', cls: 'healthy'}},
+                'recovering': {{text: '🟡 恢复中', cls: 'recovering'}},
+                'down': {{text: '🔴 故障', cls: 'down'}},
+                'unknown': {{text: '⚪ 未知', cls: 'unknown'}}
+            }};
+            var s = statusMap[data.uptime_status] || statusMap['unknown'];
+            var urlDisplay = data.current_url ? data.current_url : '未配置隧道';
+            var urlHref = data.current_url || '#';
+            var runTag = data.monitor_running ? '<span style="color:var(--accent-green);font-size:0.8em">● 守护运行中</span>' : '<span style="color:var(--text-dim);font-size:0.8em">○ 守护休眠</span>';
+            card.style.display = 'block';
+            card.innerHTML = '<div class="tunnel-card-head"><span class="tunnel-card-title">📡 URL 健康监控守护</span>' + runTag + '</div>'
+                + '<div class="tunnel-card-body">'
+                + '<div class="tunnel-metric"><span class="tunnel-metric-label">隧道地址</span><a href="' + urlHref + '" target="_blank" class="tunnel-url">' + urlDisplay + '</a></div>'
+                + '<div class="tunnel-metric"><span class="tunnel-metric-label">运行状态</span><span class="tunnel-status ' + s.cls + '">' + s.text + '</span></div>'
+                + '<div class="tunnel-metric"><span class="tunnel-metric-label">自动恢复</span><span class="tunnel-num">' + (data.recoveries || 0) + ' 次</span></div>'
+                + '<div class="tunnel-metric"><span class="tunnel-metric-label">故障次数</span><span class="tunnel-num">' + (data.failures || 0) + ' 次</span></div>'
+                + '</div>'
+                + '<div class="tunnel-card-foot">最近检查: ' + (data.last_check ? data.last_check.slice(0,19).replace('T',' ') : 'N/A') + ' · 事件总数 ' + (data.total_events || 0) + '</div>';
+        }})
+        .catch(function() {{
+            var card = document.getElementById('tunnelCard');
+            if (card) {{ card.style.display = 'none'; }}
+        }});
+}}
+
+// ═══ 架构 Tab：加载统计数据 ═══
+function loadArchData() {{
+    fetchWithTimeout('/api/status')
+        .then(r => r.json())
+        .then(data => {{
+            var envEnc = data.env_encrypted || {{}};
+            var envCount = Object.keys(envEnc).length;
+            var envEncryptedCount = Object.values(envEnc).filter(v => v).length;
+            var encText = envCount > 0 ? (envEncryptedCount + '/' + envCount) : '0';
+            var setStat = function(id, val) {{
+                var el = document.getElementById(id);
+                if (el) el.textContent = val;
+            }};
+            setStat('archStatRepos', data.db_repo_count || 0);
+            setStat('archStatReports', data.report_count || 0);
+            setStat('archStatSubs', data.subscriber_count || 0);
+            setStat('archStatEnc', encText);
+        }})
+        .catch(function() {{}});
+}}
+
+// ═══ 架构 Tab：加载隧道监控状态 ═══
+function loadTunnelStatus() {{
+    fetchWithTimeout('/api/tunnel_status')
+        .then(r => r.json())
+        .then(data => {{
+            var urlEl = document.getElementById('archTunnelUrl');
+            var statusEl = document.getElementById('archTunnelStatus');
+            var recEl = document.getElementById('archTunnelRecoveries');
+            var failEl = document.getElementById('archTunnelFailures');
+            if (urlEl) {{
+                if (data.current_url) {{
+                    urlEl.textContent = data.current_url;
+                    urlEl.href = data.current_url;
+                }} else {{
+                    urlEl.textContent = '未配置';
+                    urlEl.href = '#';
+                }}
+            }}
+            if (statusEl) {{
+                var statusMap = {{
+                    'healthy': {{text: '🟢 健康', cls: 'healthy'}},
+                    'recovering': {{text: '🟡 恢复中', cls: 'recovering'}},
+                    'down': {{text: '🔴 故障', cls: 'down'}},
+                    'unknown': {{text: '⚪ 未知', cls: 'unknown'}}
+                }};
+                var s = statusMap[data.uptime_status] || statusMap['unknown'];
+                statusEl.textContent = s.text + (data.monitor_running ? ' · 守护运行中' : '');
+                statusEl.className = 'tunnel-status ' + s.cls;
+            }}
+            if (recEl) recEl.textContent = data.recoveries || 0;
+            if (failEl) failEl.textContent = data.failures || 0;
+        }})
+        .catch(function() {{
+            var statusEl = document.getElementById('archTunnelStatus');
+            if (statusEl) {{
+                statusEl.textContent = '⚪ 加载失败';
+                statusEl.className = 'tunnel-status unknown';
+            }}
+        }});
+}}
 </script>
 </body>
 </html>"""

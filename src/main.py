@@ -23,6 +23,8 @@ from src.reporter.daily_report import generate_6section_report, save_6section_re
 from src.reporter.ai_report import generate_ai_report, save_ai_report
 from src.processor.ai_scoring import compute_ai_scores, get_ai_section_repos
 from src.notifier.email_sender import send_email, markdown_to_html
+from src.reporter.email_template import wrap_html_for_email
+from src.utils.crypto import decrypt_if_needed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,11 +77,16 @@ def run_daily():
     # ── 发送邮件 ───────────────────────────────────────
     logger.info("Step 10: Sending email...")
     subject = f"🚀 GitHub 每日热点 — {TODAY}"
-    success = send_email(subject, html_content)
+    email_html = wrap_html_for_email(html_content)
+    success = send_email(subject, email_html)
     if success:
         logger.info("Email sent successfully")
     else:
         logger.warning("Email sending failed (check .env config)")
+
+    # ── 给订阅者群发 ───────────────────────────────────
+    logger.info("Step 10.5: Sending subscription emails...")
+    send_subscription_emails(repos, email_html, TODAY, readme_cache)
 
     # ── 月初月报 ───────────────────────────────────────
     if datetime.now(timezone.utc).day == 1:
@@ -114,6 +121,82 @@ def _export_repos_json(repos: list[dict], date_str: str):
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({"date": date_str, "repos": clean_repos}, f, ensure_ascii=False, indent=2)
     logger.info(f"Exported {len(clean_repos)} repos to {json_path}")
+
+
+def send_subscription_emails(repos: list[dict], basic_html: str, date_str: str,
+                              readme_cache: dict = None):
+    """读取 subscription.json，给所有订阅者发送对应类型的日报邮件
+
+    在每日 pipeline 中调用，不依赖 Web 服务在线。
+    - basic 订阅：直接发送已生成的基础日报 HTML
+    - custom 订阅：用存储的 topic/keywords 生成自定义日报后发送
+    """
+    import json
+    from config import DATA_DIR
+
+    sub_path = os.path.join(DATA_DIR, "subscription.json")
+    if not os.path.exists(sub_path):
+        logger.info("No subscription.json found, skipping subscription emails")
+        return
+
+    try:
+        with open(sub_path, "r", encoding="utf-8") as f:
+            subs = json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to read subscription.json: {e}")
+        return
+
+    # 兼容旧的单 dict 格式
+    if isinstance(subs, dict):
+        subs = [subs]
+    if not isinstance(subs, list) or not subs:
+        logger.info("No subscribers in subscription.json")
+        return
+
+    logger.info(f"Found {len(subs)} subscriber(s), sending emails...")
+    sent, failed = 0, 0
+
+    for sub in subs:
+        email = decrypt_if_needed(sub.get("email", "")).strip()
+        sub_type = sub.get("type", "basic")
+        if not email:
+            continue
+
+        try:
+            if sub_type == "basic":
+                subject = f"🚀 GitHub 每日热点（基础日报）— {date_str}"
+                html = basic_html
+            else:
+                # 自定义订阅：生成专属日报
+                from src.processor.custom_parser import parse_query, generate_sections
+                from src.reporter.custom_report import generate_custom_report
+                topic = sub.get("topic", "自定义")
+                keywords = sub.get("keywords", [])
+                api_key = decrypt_if_needed(sub.get("api_key", ""))
+                provider = sub.get("provider", "")
+                parsed = parse_query(topic, api_key, provider)
+                if not parsed.get("keywords"):
+                    parsed["keywords"] = keywords
+                sections = generate_sections(parsed.get("topic", topic),
+                                             parsed.get("keywords", []),
+                                             api_key, provider)
+                basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
+                html = generate_custom_report(repos, topic, parsed, sections,
+                                              basic_repos=basic_repos,
+                                              api_key=api_key, provider=provider)
+                html = wrap_html_for_email(html)
+                subject = f"🔧 GitHub 每日热点（自定义: {topic}）— {date_str}"
+
+            ok = send_email(subject, html, receiver=email)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.warning(f"Subscription email failed for {email[:2]}***: {e}")
+            failed += 1
+
+    logger.info(f"Subscription emails done: {sent} sent, {failed} failed")
 
 
 def run_monthly():

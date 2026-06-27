@@ -22,11 +22,16 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
 
-def _call_llm(prompt: str, max_tokens: int = 2000) -> str | None:
+def _call_llm(prompt: str, max_tokens: int = 2000, api_key: str = "", provider: str = "") -> str | None:
     """
     调用 LLM API，自动选择可用的提供商
-    优先级：DeepSeek > Anthropic
+    优先级：传入的用户 key > 环境变量配置的开发者 key
     """
+    # 用户传入自己的 key（自定义模块用用户额度）
+    if api_key and api_key.strip():
+        return _call_with_user_key(prompt, max_tokens, api_key.strip(), provider)
+
+    # 开发者 key（基础模块用开发者额度）
     if DEEPSEEK_API_KEY and DEEPSEEK_API_KEY not in ("", "sk-xxxxxxxxxxxx"):
         return _call_deepseek(prompt, max_tokens)
 
@@ -35,6 +40,130 @@ def _call_llm(prompt: str, max_tokens: int = 2000) -> str | None:
 
     logger.info("No LLM API key configured (set DEEPSEEK_API_KEY or ANTHROPIC_API_KEY)")
     return None
+
+
+def _call_with_user_key(prompt: str, max_tokens: int, api_key: str, provider: str) -> str | None:
+    """用用户自己的 API key 调用 LLM（支持多厂商）"""
+    p = (provider or "").lower().strip()
+
+    try:
+        if p in ("", "deepseek"):
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {
+                "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+                "messages": [
+                    {"role": "system", "content": "你是一位资深开源项目分析师，擅长结合数据做深度技术分析。输出格式严格遵循用户要求。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+            }
+            resp = requests.post(
+                f"{os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')}/v1/chat/completions",
+                headers=headers, json=body, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+        if p in ("openai", "gpt"):
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {
+                "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                "messages": [
+                    {"role": "system", "content": "你是一位资深开源项目分析师，擅长结合数据做深度技术分析。输出格式严格遵循用户要求。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+            }
+            resp = requests.post(
+                f"{os.getenv('OPENAI_BASE_URL', 'https://api.openai.com')}/v1/chat/completions",
+                headers=headers, json=body, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+        if p in ("anthropic", "claude"):
+            headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+            body = {
+                "model": os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            resp = requests.post("https://api.anthropic.com/v1/messages",
+                                 headers=headers, json=body, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["content"][0]["text"]
+
+        if p in ("qwen", "tongyi", "alibaba"):
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {
+                "model": os.getenv("QWEN_MODEL", "qwen-plus"),
+                "messages": [
+                    {"role": "system", "content": "你是一位资深开源项目分析师，擅长结合数据做深度技术分析。输出格式严格遵循用户要求。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+            }
+            resp = requests.post(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                headers=headers, json=body, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+        if p in ("zhipu", "glm"):
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {
+                "model": os.getenv("ZHIPU_MODEL", "glm-4-flash"),
+                "messages": [
+                    {"role": "system", "content": "你是一位资深开源项目分析师，擅长结合数据做深度技术分析。输出格式严格遵循用户要求。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+            }
+            resp = requests.post(
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                headers=headers, json=body, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+        if p in ("moonshot", "kimi"):
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            body = {
+                "model": os.getenv("MOONSHOT_MODEL", "moonshot-v1-8k"),
+                "messages": [
+                    {"role": "system", "content": "你是一位资深开源项目分析师，擅长结合数据做深度技术分析。输出格式严格遵循用户要求。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.3,
+            }
+            resp = requests.post(
+                "https://api.moonshot.cn/v1/chat/completions",
+                headers=headers, json=body, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+        # 默认走 OpenAI 兼容接口
+        logger.warning(f"Unknown provider '{provider}', trying OpenAI-compatible endpoint")
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        body = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "你是一位资深开源项目分析师，擅长结合数据做深度技术分析。输出格式严格遵循用户要求。"},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.3,
+        }
+        resp = requests.post("https://api.openai.com/v1/chat/completions",
+                             headers=headers, json=body, timeout=120)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        logger.warning(f"User LLM call failed (provider={provider}): {e}")
+        return None
 
 
 def _call_deepseek(prompt: str, max_tokens: int = 2000) -> str | None:
@@ -96,8 +225,11 @@ def _call_anthropic(prompt: str, max_tokens: int = 2000) -> str | None:
         return None
 
 
-def summarize_project(repo: dict, readme_text: str) -> str | None:
-    """用 LLM 生成多维度全景项目介绍"""
+def summarize_project(repo: dict, readme_text: str, api_key: str = "", provider: str = "") -> str | None:
+    """用 LLM 生成多维度全景项目介绍
+
+    api_key/provider 非空时用用户自己的 key（自定义模块），否则用开发者 key（基础模块）
+    """
     if not readme_text or len(readme_text) < 50:
         return None
 
@@ -207,10 +339,11 @@ def summarize_project(repo: dict, readme_text: str) -> str | None:
 
 使用中文，语气专业有温度。不要罗列原始数据，要给出分析结论。"""
 
-    return _call_llm(prompt, max_tokens=1200)
+    return _call_llm(prompt, max_tokens=1200, api_key=api_key, provider=provider)
 
 
-def analyze_trends(repos: list[dict], readme_cache: dict[str, str]) -> str | None:
+def analyze_trends(repos: list[dict], readme_cache: dict[str, str],
+                    api_key: str = "", provider: str = "") -> str | None:
     """用 LLM 对当日整体趋势进行多维度分析"""
     from collections import Counter
 
@@ -280,4 +413,4 @@ def analyze_trends(repos: list[dict], readme_cache: dict[str, str]) -> str | Non
 
 使用中文。每个趋势给出具体项目作为例证，数据引用要准确。不要泛泛而谈。"""
 
-    return _call_llm(prompt, max_tokens=1200)
+    return _call_llm(prompt, max_tokens=1200, api_key=api_key, provider=provider)

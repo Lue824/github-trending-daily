@@ -1,0 +1,9 @@
+{
+  "check_interval_seconds": 60,
+  "request_timeout_seconds": 10,
+  "failures_before_action": 2,
+  "max_retries": 3,
+  "retry_delay_seconds": 5,
+  "cf_startup_wait_seconds": 20,
+  "health_check_path": "/api/status"
+}

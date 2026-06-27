@@ -2,12 +2,36 @@
 __pycache__/
 *.pyc
 .claude/
+.trae/
 data/raw/
 data/readmes/
+data/.secret_key
+data/cache.db
+data/trending.db
+data/subscription.json
+data/logs/
+current_url.txt
+data/.last_tunnel_url
+*.log
 .DS_Store
+
+# 与 HF 部署无关的文件/目录
+VocabularyProcessor/
+Session ID/
+图片/
+*.docx
+Demo帖草稿.md
+报名帖.md
+grill-me_决策记录.md
+README_HF.md
+GitHub_Trending_Daily_Demo.html
+encrypt_secrets.py
+export_db.py
+start_tunnel.ps1
+start_url_monitor.ps1
+run_daily_scheduled.ps1
 
 # 注意：以下文件需要提交到仓库（供 HF Spaces / PythonAnywhere 读取）
 # data/reports/*.html  — 预生成的日报文件
 # data/trending.db     — SQLite 数据库（当天 repos）
-# data/subscription.json — 订阅记录
 # 这些文件由 GitHub Actions 每天自动生成并提交

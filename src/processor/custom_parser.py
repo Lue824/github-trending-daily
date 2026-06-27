@@ -150,44 +150,94 @@ def _call_llm(prompt: str, system: str, api_key: str, provider: str = "",
 # ── 第一层：规则匹配 ──────────────────────────────────
 _COMMON_TOPICS = {
     # AI 相关
-    "AI Agent": ["agent", "mcp", "langchain", "rag", "function-call", "skill", "orchestrat"],
-    "大模型": ["llm", "gpt", "llama", "chatgpt", "openai", "deepseek", "claude", "anthropic", "mistral"],
-    "文生图": ["stable-diffusion", "image-generation", "dalle", "midjourney", "txt2img", "comfyui"],
-    "语音AI": ["tts", "stt", "speech", "whisper", "voice", "audio"],
+    "AI Agent": ["agent", "mcp", "langchain", "rag", "function-call", "skill", "orchestrat", "智能体", "代理"],
+    "大模型": ["llm", "gpt", "llama", "chatgpt", "openai", "deepseek", "claude", "anthropic", "mistral", "大模型", "大语言模型"],
+    "文生图": ["stable-diffusion", "image-generation", "dalle", "midjourney", "txt2img", "comfyui", "文生图", "图像生成"],
+    "语音AI": ["tts", "stt", "speech", "whisper", "voice", "audio", "语音", "tts"],
+    "具身智能": ["embodied", "embodied-ai", "embodied-intelligence", "embodied-agent", "robotics", "robot", "robot-learning", "manipulation", "locomotion", "sim2real", "embodied-intelligence", "具身智能", "具身"],
     # 金融
-    "量化交易": ["trading", "quant", "finance", "stock", "crypto", "backtest", "strategy"],
-    "金融": ["finance", "financial", "fintech", "banking", "payment", "stripe", "paypal"],
+    "量化交易": ["trading", "quant", "finance", "stock", "crypto", "backtest", "strategy", "量化", "量化交易"],
+    "金融": ["finance", "financial", "fintech", "banking", "payment", "stripe", "paypal", "金融"],
     # 开发工具
-    "游戏开发": ["game", "engine", "unity", "unreal", "godot", "rendering", "opengl"],
-    "前端框架": ["react", "vue", "angular", "svelte", "nextjs", "frontend", "tailwind"],
-    "后端框架": ["django", "flask", "fastapi", "express", "spring", "laravel", "backend"],
-    "数据库": ["database", "sql", "nosql", "postgres", "mysql", "redis", "mongodb"],
-    "DevOps": ["docker", "kubernetes", "k8s", "ci-cd", "terraform", "ansible", "jenkins"],
-    "CLI工具": ["cli", "terminal", "tui", "command-line", "bash", "zsh"],
+    "游戏开发": ["game", "engine", "unity", "unreal", "godot", "rendering", "opengl", "游戏开发", "游戏引擎"],
+    "前端框架": ["react", "vue", "angular", "svelte", "nextjs", "frontend", "tailwind", "前端"],
+    "后端框架": ["django", "flask", "fastapi", "express", "spring", "laravel", "backend", "后端"],
+    "数据库": ["database", "sql", "nosql", "postgres", "mysql", "redis", "mongodb", "数据库"],
+    "DevOps": ["docker", "kubernetes", "k8s", "ci-cd", "terraform", "ansible", "jenkins", "运维"],
+    "CLI工具": ["cli", "terminal", "tui", "command-line", "bash", "zsh", "命令行"],
     # 安全
-    "安全工具": ["security", "pentest", "osint", "exploit", "cve", "vulnerability", "hacking"],
+    "安全工具": ["security", "pentest", "osint", "exploit", "cve", "vulnerability", "hacking", "安全", "网络安全"],
     # 热门语言生态
     "Rust生态": ["rust", "cargo", "wasm", "tokio", "actix"],
     "Python生态": ["python", "pypi", "django", "flask", "fastapi", "jupyter"],
     "Go生态": ["go", "golang", "gin", "echo", "fiber"],
     "TypeScript生态": ["typescript", "ts", "bun", "deno"],
     # 其他热门
-    "区块链": ["blockchain", "web3", "ethereum", "solidity", "defi", "nft", "bitcoin"],
-    "机器人": ["robotics", "robot", "ros", "embodied", "simulation"],
-    "视频处理": ["video", "ffmpeg", "streaming", "encode", "media", "youtube"],
-    "桌面应用": ["desktop", "electron", "tauri", "gui", "gtk", "qt", "wpf"],
-    "移动开发": ["mobile", "android", "ios", "flutter", "react-native", "swift", "kotlin"],
-    "云计算": ["cloud", "aws", "azure", "gcp", "serverless", "lambda", "s3"],
+    "区块链": ["blockchain", "web3", "ethereum", "solidity", "defi", "nft", "bitcoin", "区块链"],
+    "机器人": ["robotics", "robot", "ros", "embodied", "simulation", "机器人", "机械臂"],
+    "视频处理": ["video", "ffmpeg", "streaming", "encode", "media", "youtube", "视频"],
+    "桌面应用": ["desktop", "electron", "tauri", "gui", "gtk", "qt", "wpf", "桌面"],
+    "移动开发": ["mobile", "android", "ios", "flutter", "react-native", "swift", "kotlin", "移动"],
+    "云计算": ["cloud", "aws", "azure", "gcp", "serverless", "lambda", "s3", "云计算", "云原生"],
     "API开发": ["api", "rest", "graphql", "grpc", "swagger", "openapi"],
-    "数据科学": ["data-science", "pandas", "numpy", "matplotlib", "jupyter", "analytics"],
-    "设计工具": ["design", "figma", "ui", "ux", "css", "sketch", "prototype"],
-    "测试工具": ["testing", "unittest", "jest", "pytest", "cypress", "selenium"],
-    "浏览器": ["browser", "chrome", "firefox", "extension", "playwright", "puppeteer"],
-    "监控运维": ["monitoring", "logging", "metrics", "observability", "prometheus", "grafana"],
-    "教育教程": ["tutorial", "education", "learn", "course", "awesome", "handbook"],
-    "文档工具": ["documentation", "docs", "markdown", "wiki", "mdx", "notion"],
-    "构建工具": ["build", "webpack", "vite", "esbuild", "bundler", "rollup"],
-    "容器化": ["container", "podman", "docker-compose", "dockerfile", "registry"],
+    "数据科学": ["data-science", "pandas", "numpy", "matplotlib", "jupyter", "analytics", "数据科学"],
+    "设计工具": ["design-tool", "figma", "ux-design", "ui-design", "css", "sketch", "prototype", "ui-ux",
+                "设计工具", "ui设计", "ux设计"],
+    "测试工具": ["testing", "unittest", "jest", "pytest", "cypress", "selenium", "测试"],
+    "浏览器": ["browser", "chrome", "firefox", "extension", "playwright", "puppeteer", "浏览器"],
+    "监控运维": ["monitoring", "logging", "metrics", "observability", "prometheus", "grafana", "监控"],
+    "教育教程": ["tutorial", "education", "learn", "course", "awesome", "handbook", "教程", "学习"],
+    "文档工具": ["documentation", "docs", "markdown", "wiki", "mdx", "notion", "文档"],
+    "构建工具": ["build", "webpack", "vite", "esbuild", "bundler", "rollup", "构建"],
+    "容器化": ["container", "podman", "docker-compose", "dockerfile", "registry", "容器"],
+    # ── 电气工程 / 嵌入式 / 硬件 ─────────────────────
+    "嵌入式开发": ["embedded", "esp32", "esp8266", "stm32", "arduino", "microcontroller",
+                  "firmware", "rtos", "freertos", "zephyr", "nuttx", "bare-metal",
+                  "嵌入式", "单片机", "固件", "电气工程", "电气", "自动化"],
+    "电子信息": ["electronic", "fpga", "verilog", "vhdl", "dsp", "signal-processing",
+                "sdr", "rfid", "nfc", "antenna", "adc", "dac", "soc", "semiconductor",
+                "microcontroller", "chip-design", "silicon",
+                "芯片", "集成电路", "微电子",
+                "电子信息", "电子工程"],
+    "物联网": ["iot", "mqtt", "smart-home", "home-automation", "home-assistant",
+              "zigbee", "lora", "lorawan", "nrf", "homekit", "matter", "thread",
+              "物联网", "智能家居"],
+    "硬件设计": ["pcb", "kicad", "easyeda", "altium", "fpga", "verilog", "vhdl",
+                "circuit", "electronics", "eda", "gerber", "schematic",
+                "hardware-design", "pcba",
+                "硬件设计", "硬件", "电路", "印制电路板"],
+    "信号处理": ["dsp", "signal-processing", "fft", "filter", "audio-processing",
+                "wavelet", "convolution", "digital-signal-processing",
+                "信号处理", "数字信号处理"],
+    "电力系统": ["power-system", "scada", "plc", "modbus", "power-electronics",
+                "battery", "charger", "solar", "inverter", "grid", "battery-management",
+                "电力系统", "电力", "电网", "电力电子", "储能"],
+    "射频通信": ["sdr", "rfid", "nfc", "radio-frequency", "wireless", "lte", "5g",
+                "bluetooth", "antenna", "rtl-sdr", "rf-module",
+                "射频", "通信", "无线"],
+    # ── 汽车工程 / 自动驾驶 ───────────────────────────
+    "自动驾驶": ["autonomous-driving", "self-driving", "can-bus", "apollo",
+                "autoware", "carla", "openpilot", "lidar", "adas", "automotive",
+                "自动驾驶", "汽车", "车载", "无人驾驶"],
+    # ── 机械工程 / 智能制造 ───────────────────────────
+    "机械制造": ["cad-software", "freecad", "openscad", "3d-printing", "cnc",
+                "grbl", "cam-software", "prusa", "cura", "slicer",
+                "additive-manufacturing",
+                "机械", "制造", "3d打印", "数控", "机械工程"],
+    # ── 生物医学工程 ─────────────────────────────────
+    "生物医学": ["medical", "bioinformatics", "dicom", "eeg", "emg", "openbci",
+                "mri", "ct-scan", "medical-imaging", "bci", "brain-computer",
+                "genome", "protein", "biomedical", "healthcare",
+                "医学", "生物", "脑机接口", "医疗", "生物医学"],
+    # ── 土木工程 / 建筑 ───────────────────────────────
+    "土木建筑": ["gis", "bim", "qgis", "ifcopenshell", "opensees", "calculix",
+                "structural", "leaflet", "openstreetmap", "civil-engineering",
+                "construction", "architecture",
+                "土木", "建筑", "土木工程", "地理信息"],
+    # ── 机器人 / 机械臂（独立于具身智能的工程化方向）──
+    "机器人控制": ["robotics", "ros", "ros2", "moveit", "gazebo", "rviz",
+                  "robotic-arm", "manipulator", "ur5", "franka", "kinematics",
+                  "机器人", "机械臂", "运动学"],
 }
 
 
@@ -195,8 +245,17 @@ def _rule_parse(query: str) -> dict | None:
     """规则匹配：将自然语言转为关键词"""
     q = query.lower()
     for topic, keywords in _COMMON_TOPICS.items():
-        if any(kw in q for kw in keywords) or topic.lower() in q:
+        if topic.lower() in q:
             return {"keywords": keywords, "topic": topic, "source": "rule"}
+        for kw in keywords:
+            kw_lower = kw.lower()
+            # 短关键词（≤3字符且纯字母）用词边界匹配，避免 "go" 匹配 "google"
+            if len(kw_lower) <= 3 and kw_lower.isalpha():
+                if re.search(r'\b' + re.escape(kw_lower) + r'\b', q):
+                    return {"keywords": keywords, "topic": topic, "source": "rule"}
+            else:
+                if kw_lower in q:
+                    return {"keywords": keywords, "topic": topic, "source": "rule"}
     return None
 
 
@@ -252,19 +311,105 @@ def _llm_parse(query: str, api_key: str = "", provider: str = "") -> dict | None
 
 # ── 第三层：降级处理 ────────────────────────────────
 
-def _fallback_parse(query: str) -> dict:
-    """兜底方案：提取 query 中的英文单词 + 中文关键词"""
+# 中文技术术语 → 英文关键词映射（兜底解析时使用）
+_CN_EN_MAP = {
+    # AI / 机器人
+    "具身智能": ["embodied", "embodied-ai", "robotics", "robot"],
+    "机器人": ["robotics", "robot", "ros"],
+    "机器学习": ["machine-learning", "ml", "scikit-learn"],
+    "深度学习": ["deep-learning", "pytorch", "tensorflow", "neural-network"],
+    "计算机视觉": ["computer-vision", "cv", "opencv", "image-processing"],
+    "自然语言处理": ["nlp", "natural-language-processing", "transformer"],
+    "语音识别": ["speech-recognition", "asr", "whisper"],
+    "自动驾驶": ["autonomous-driving", "self-driving", "autonomous-vehicle"],
+    "推荐系统": ["recommendation-system", "recommender", "collaborative-filtering"],
+    "知识图谱": ["knowledge-graph", "graph-database", "neo4j"],
+    "数据可视化": ["data-visualization", "dashboard", "chart", "d3"],
+    "增强现实": ["ar", "augmented-reality", "arkit"],
+    "虚拟现实": ["vr", "virtual-reality", "unity3d"],
+    "游戏引擎": ["game-engine", "unity", "unreal", "godot"],
+    # 金融
+    "量化交易": ["trading", "quant", "backtest", "strategy"],
+    "区块链": ["blockchain", "web3", "ethereum", "solidity"],
+    "低代码": ["low-code", "no-code", "visual-programming"],
+    # 电气 / 能源 / 工控
+    "电气": ["electrical-engineering", "power-systems", "power-grid", "power-flow"],
+    "电力": ["power-systems", "power-grid", "power-engineering", "electrical-engineering"],
+    "新能源": ["renewable-energy", "solar", "wind-energy", "energy-storage"],
+    "能源": ["energy", "power", "energy-management", "battery"],
+    "工业控制": ["plc", "scada", "industrial-automation", "modbus"],
+    "嵌入式": ["embedded", "arduino", "stm32", "esp32", "microcontroller"],
+    "物联网": ["iot", "internet-of-things", "embedded", "sensor"],
+    # 其他
+    "边缘计算": ["edge-computing", "edge", "iot"],
+    "量子计算": ["quantum", "quantum-computing", "qiskit"],
+    "微服务": ["microservice", "microservices", "service-mesh"],
+    "容器": ["container", "docker", "kubernetes"],
+    "云原生": ["cloud-native", "kubernetes", "serverless"],
+    "编译器": ["compiler", "llvm", "parser"],
+    "操作系统": ["operating-system", "os", "kernel"],
+    "分布式": ["distributed", "distributed-system", "consensus"],
+    "密码学": ["cryptography", "crypto", "encryption"],
+    "爬虫": ["crawler", "scraper", "spider", "scraping"],
+    "搜索引擎": ["search-engine", "elasticsearch", "search"],
+    "消息队列": ["message-queue", "kafka", "rabbitmq", "mqtt"],
+    "缓存": ["cache", "redis", "memcached"],
+    "负载均衡": ["load-balancer", "load-balancing", "nginx"],
+    "持续集成": ["ci-cd", "continuous-integration", "jenkins"],
+    "代码审查": ["code-review", "lint", "static-analysis"],
+    "性能监控": ["monitoring", "observability", "apm", "prometheus"],
+    "日志分析": ["logging", "log-analysis", "elk", "log"],
+    # 更多常见中文技术词
+    "前端": ["frontend", "react", "vue", "javascript", "typescript"],
+    "后端": ["backend", "api", "server", "django", "fastapi"],
+    "算法": ["algorithm", "data-structure", "leetcode"],
+    "可视化": ["visualization", "chart", "dashboard", "plot"],
+    "架构": ["architecture", "design-pattern", "software-architecture"],
+    "编码": ["encoding", "codec", "encoder", "decoder"],
+    "网络": ["network", "http", "tcp", "socket", "networking"],
+    "存储": ["storage", "filesystem", "database", "object-storage"],
+    "仿真": ["simulation", "simulator", "physics", "emulator"],
+    "建模": ["modeling", "cad", "3d-model", "bim"],
+}
+
+
+def _fallback_parse(query: str, api_key: str = "", provider: str = "") -> dict:
+    """兜底方案：提取英文词 + 中文→英文翻译 + 中文关键词映射
+
+    翻译优先级：本地映射表 > LLM 翻译（用户 key）> MyMemory 免费 API > 原文
+    """
+    from src.processor.translator import translate_to_english, extract_keywords_from_translation
+
     words = re.findall(r"[a-zA-Z][a-zA-Z0-9_\-.]{2,}", query)
     stop = {"the", "and", "for", "want", "see", "show", "with", "related"}
     keywords = [w.lower() for w in words if w.lower() not in stop]
 
-    # 如果没有英文词，尝试拆中文（2-4字词）
+    # 提取中文词
+    cn_words = re.findall(r"[\u4e00-\u9fff]{2,6}", query)
+    cn_stop = {"我想看", "相关的", "有没有", "的项目", "一些", "那些", "就是", "有什么", "帮我", "我要"}
+    cn_words = [c for c in cn_words if c not in cn_stop]
+
+    # 中文 → 英文关键词映射（让 _match_repo 和 GitHub Search 都能用英文匹配）
+    for cn in cn_words:
+        if cn in _CN_EN_MAP:
+            keywords.extend(_CN_EN_MAP[cn])
+
+    # 翻译整个查询（处理映射表未覆盖的中文词）
+    # 只对包含中文的查询翻译，避免无谓的网络请求
+    if cn_words:
+        translation = translate_to_english(query, api_key=api_key, provider=provider)
+        if translation and translation != query:
+            # 从翻译结果提取英文关键词
+            translated_kws = extract_keywords_from_translation(translation, max_n=5)
+            keywords.extend(translated_kws)
+            logger.info(f"Fallback translated '{query}' -> '{translation}' -> keywords: {translated_kws}")
+
+    # 去重
+    seen = set()
+    keywords = [k for k in keywords if not (k in seen or seen.add(k))]
+
     if not keywords:
-        cn = re.findall(r"[\u4e00-\u9fff]{2,4}", query)
-        # 过滤无意义词
-        cn_stop = {"我想看", "相关的", "有没有", "的项目", "一些", "那些", "就是", "有什么", "帮我", "我要"}
-        cn = [c for c in cn if c not in cn_stop]
-        keywords = cn if cn else ["github"]  # 最后兜底
+        keywords = ["github"]
 
     return {
         "topic": query[:20],
@@ -304,9 +449,9 @@ def parse_query(query: str, api_key: str = "", provider: str = "") -> dict:
         logger.info(f"Query parsed by LLM: {result.get('topic', query[:15])}")
         return result
 
-    # 第 3-4 层：兜底
-    logger.info("Falling back to keyword extraction")
-    return _fallback_parse(query)
+    # 第 3-4 层：兜底（含翻译）
+    logger.info("Falling back to keyword extraction with translation")
+    return _fallback_parse(query, api_key=api_key, provider=provider)
 
 
 # ── 板块定义生成 ────────────────────────────────────

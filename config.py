@@ -1,6 +1,9 @@
 import os
 
 # ── 手动加载 .env 文件（避免依赖 python-dotenv） ────────────
+# 同时对 ENC: 前缀的敏感值自动解密
+from src.utils.crypto import decrypt_if_needed
+
 _ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 if os.path.exists(_ENV_PATH):
     with open(_ENV_PATH, "r", encoding="utf-8") as _f:
@@ -10,11 +13,12 @@ if os.path.exists(_ENV_PATH):
                 _key, _, _val = _line.partition("=")
                 _key = _key.strip()
                 _val = _val.strip().strip('"').strip("'")
+                _val = decrypt_if_needed(_val)  # 自动检测 ENC: 前缀并解密，明文原样返回
                 if _key not in os.environ:  # 不覆盖系统环境变量
                     os.environ[_key] = _val
 
 # ── GitHub API ──────────────────────────────────────────────
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # 可选，提高 API 限额
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")  # 可选，提高 API 限额（已自动解密）
 
 # ── Trending 爬取 ───────────────────────────────────────────
 TRENDING_LANGUAGES = [

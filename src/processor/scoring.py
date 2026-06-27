@@ -12,6 +12,29 @@
 每个维度 0~1 归一化
 """
 import math
+import re
+
+
+def _topic_in_list(keyword: str, topics: list[str]) -> bool:
+    """检查 keyword 是否在 topics 列表中（精确匹配，支持 hyphen 分割）
+
+    避免 `"rag" in " ".join(topics)` 这种子串误匹配（rag 误匹配 storage 等）。
+    """
+    for t in topics:
+        if keyword == t or keyword in t.split("-"):
+            return True
+    return False
+
+
+def _kw_in_text(keyword: str, text: str) -> bool:
+    """检查关键词是否在文本中出现（短关键词用词边界，长关键词用子串）
+
+    避免 "rag" 误匹配 "storage"/"fragments"，"agent" 误匹配 "management" 等。
+    """
+    if len(keyword) <= 5 and keyword.isalpha():
+        # 短纯字母关键词用词边界匹配
+        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
+    return keyword in text
 
 
 def _sigmoid(x: float, k: float = 0.1) -> float:
@@ -215,7 +238,8 @@ def _ai_eco_match_score(repo: dict) -> float:
     }
 
     for kw, weight in core_ai.items():
-        if kw in desc or kw in name or kw in " ".join(topics):
+        # topics 用精确匹配，desc/name 用词边界匹配短关键词
+        if _topic_in_list(kw, topics) or _kw_in_text(kw, desc) or _kw_in_text(kw, name):
             score += weight
 
     # 领域标签加分

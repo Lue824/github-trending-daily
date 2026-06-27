@@ -22,17 +22,24 @@ if GITHUB_TOKEN and GITHUB_TOKEN not in ("0", "false", "no", "none"):
 
 
 def _api_get(url: str, params: dict = None) -> dict | None:
-    """统一的 API GET 请求"""
-    try:
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
-        if resp.status_code == 403 and "rate limit" in resp.text.lower():
-            logger.warning("GitHub API rate limit exceeded")
+    """统一的 API GET 请求（401/403 时自动去掉 token 重试）"""
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
+            if resp.status_code == 401 and "Authorization" in HEADERS:
+                # token 失效，去掉 Authorization 头重试（匿名访问仍可用，仅限速更严）
+                logger.warning("GitHub token invalid (401), retrying anonymously")
+                anon_headers = {k: v for k, v in HEADERS.items() if k != "Authorization"}
+                resp = requests.get(url, headers=anon_headers, params=params, timeout=30)
+            if resp.status_code == 403 and "rate limit" in resp.text.lower():
+                logger.warning("GitHub API rate limit exceeded")
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as e:
+            logger.error(f"API request failed: {e}")
             return None
-        resp.raise_for_status()
-        return resp.json()
-    except requests.RequestException as e:
-        logger.error(f"API request failed: {e}")
-        return None
+    return None
 
 
 def _parse_repo(item: dict, source: str) -> dict:
@@ -131,8 +138,14 @@ def search_high_value_repos(keywords: list[str], per_page: int = 15) -> list[dic
     if not keywords:
         return []
 
+    # 过滤纯中文关键词（GitHub Search API 不支持中文搜索，会返回无关结果）
+    eng_keywords = [k for k in keywords if not all('一' <= c <= '鿿' for c in k)]
+    if not eng_keywords:
+        logger.info(f"High-value search skipped: all keywords are Chinese: {keywords[:5]}")
+        return []
+
     # 构建查询：关键词 OR 组合 + stars 门槛 + pushed 最近一年
-    kw_query = " OR ".join(keywords[:5])
+    kw_query = " OR ".join(eng_keywords[:5])
     q = f"{kw_query} stars:>1000 pushed:>={(datetime.now(timezone.utc) - timedelta(days=365)).strftime('%Y-%m-%d')}"
 
     url = f"{API_BASE}/search/repositories"

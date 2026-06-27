@@ -1,5 +1,6 @@
 """按领域分类并标记重点项目"""
 import math
+import re
 
 from config import FOCUS_KEYWORDS
 
@@ -25,9 +26,17 @@ def _match_focus_areas(repo: dict) -> list[str]:
     matched = []
     for area, keywords in FOCUS_KEYWORDS.items():
         for kw in keywords:
-            if kw.lower() in text:
-                matched.append(area)
-                break  # 每个领域只记一次
+            kw_lower = kw.lower()
+            # 短关键词（≤3字符且纯字母）用词边界匹配，避免 "rl" 匹配 "world"
+            if len(kw_lower) <= 3 and kw_lower.isalpha():
+                if re.search(r'\b' + re.escape(kw_lower) + r'\b', text):
+                    matched.append(area)
+                    break
+            else:
+                # 长关键词或含连字符的，用子串匹配
+                if kw_lower in text:
+                    matched.append(area)
+                    break
     return matched
 
 

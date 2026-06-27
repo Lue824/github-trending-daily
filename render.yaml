@@ -1,0 +1,22 @@
+# Render Blueprint — GitHub Trending Daily
+# 部署指南: https://render.com/docs/blueprints
+services:
+  - type: web
+    name: github-trending-daily
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn web.app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: QQ_EMAIL
+        sync: false
+      - key: QQ_EMAIL_AUTH_CODE
+        sync: false
+      - key: RECEIVER_EMAIL
+        sync: false
