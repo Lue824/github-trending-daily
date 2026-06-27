@@ -1,0 +1,67 @@
+# ── 敏感文件：绝不打入镜像 ──
+.env
+.env.local
+.env.production
+.git/
+.github/
+.gitignore
+
+# 加密主密钥（解密订阅邮箱/API Key 用）
+data/.secret_key
+
+# 订阅数据（含加密邮箱与 API Key）
+data/subscription.json
+
+# 运行时数据库
+data/trending.db
+data/cache.db
+data/*.sqlite
+data/*.sqlite3
+data/*.db
+
+# 日志
+data/logs/
+logs/
+*.log
+
+# 运行时缓存/中间产物
+data/raw/
+data/readmes/
+data/cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 虚拟环境与依赖目录
+.venv/
+venv/
+env/
+node_modules/
+
+# 密钥/证书
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.csr
+
+# 文档与配置（无需进镜像）
+*.md
+Dockerfile
+docker-compose*.yml
+render.yaml
+.editorconfig
+.idea/
+.vscode/
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+
+# 临时测试脚本
+_test_*.py
+test_*.py

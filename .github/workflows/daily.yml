@@ -47,8 +47,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # 强制添加（.gitignore 可能排除了一些文件）
-          git add data/reports/ data/trending.db data/repos.json data/subscription.json -f 2>/dev/null || true
+          # 注意：不再提交 data/subscription.json（含订阅者邮箱与 API Key）
+          #      和 data/trending.db（运行时数据库），保护订阅者隐私
+          git add data/reports/ data/repos.json -f 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
@@ -67,22 +68,28 @@ jobs:
             exit 0
           fi
           echo "🚀 Syncing to HF Spaces..."
-          # 克隆 HF Spaces 仓库到临时目录
-          git clone https://lue824:${HF_TOKEN}@huggingface.co/spaces/lue824/github-trending-daily /tmp/hf-space || {
+          # 使用 http.extraheader 传递 token，避免 token 留在 .git/config
+          git -c http.extraheader="Authorization: Bearer ${HF_TOKEN}" \
+              clone https://huggingface.co/spaces/lue824/github-trending-daily /tmp/hf-space || {
             echo "⚠️ HF Spaces clone failed (account may be locked), skipping"
             exit 0
           }
-          # 同步所有文件（排除二进制 db、缓存、敏感文件）
+          # 同步所有文件（排除二进制 db、缓存、敏感文件、订阅数据）
           rsync -av \
             --exclude='.git' \
             --exclude='data/trending.db' \
+            --exclude='data/subscription.json' \
+            --exclude='data/.secret_key' \
             --exclude='data/raw/' \
             --exclude='data/readmes/' \
+            --exclude='data/cache/' \
+            --exclude='data/logs/' \
             --exclude='__pycache__/' \
             --exclude='*.pyc' \
             --exclude='.env' \
             --exclude='.claude/' \
             --exclude='.github/' \
+            --exclude='.venv/' \
             ./ /tmp/hf-space/
           # 提交并推送
           cd /tmp/hf-space

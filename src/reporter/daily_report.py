@@ -56,9 +56,9 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
     readme = readme_cache.get(full_name, "")
     dims = generate_dimensions(repo, readme=readme, llm_text=llm)
     dims_html = "".join(
-        f'<div class="dim-item"><span class="dim-icon">{d["icon"]}</span>'
-        f'<span class="dim-label">{d["label"]}</span>'
-        f'<span class="dim-text">{d["text"]}</span></div>'
+        f'<div class="dim-item"><span class="dim-icon">{esc(d["icon"])}</span>'
+        f'<span class="dim-label">{esc(d["label"])}</span>'
+        f'<span class="dim-text">{esc(d["text"])}</span></div>'
         for d in dims
     )
     dimensions_html = ""
@@ -75,9 +75,9 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
         desc_html = esc(generate_cn_description(repo))
     else:
         if readme:
-            desc_html = generate_cn_intro_with_readme(repo, readme)
+            desc_html = safe_text_br(generate_cn_intro_with_readme(repo, readme))
         else:
-            desc_html = generate_cn_detail(repo)
+            desc_html = safe_text_br(generate_cn_detail(repo))
 
     # 统一指标行（与自定义模块一致）
     stat_parts = [f'<span class="metric-item">⭐ {stars:,}</span>']
@@ -170,8 +170,9 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
         signals = []
         if extra.get("open_issues", 0) > 10:
             signals.append(f'🐛 开放 Issues: {extra["open_issues"]}')
-        if extra.get("last_push_days", 0) > 180:
-            signals.append(f'⏸ 最后推送: {extra["last_push_days"]}天前')
+        last_push_val = extra.get("last_push_days")
+        if last_push_val is not None and last_push_val > 180:
+            signals.append(f'⏸ 最后推送: {last_push_val}天前')
         if extra.get("releases", 0) == 0:
             signals.append('📦 无 Release')
         if extra.get("contributors", 0) <= 1:

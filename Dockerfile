@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制项目代码
+# 复制项目代码（.dockerignore 已排除 .env / data/.secret_key / data/subscription.json 等）
 COPY . .
 
 # HF Spaces 文件系统大部分只读，可写目录：/data
@@ -25,17 +25,27 @@ RUN mkdir -p /data/reports /data/raw /data/readmes
 
 # 如果仓库里有预生成的日报和数据库，复制到可写目录
 # （HF Spaces 每次 rebuild 会重置非 /data 目录，但 git 仓库内容在镜像里）
-# 这里把仓库内的 data/reports 和 trending.db 复制到 /data，保证可读可写
-RUN if [ -d /app/data/reports ]; then cp -r /app/data/reports/* /data/reports/ 2>/dev/null || true; fi
-RUN if [ -f /app/data/trending.db ]; then cp /app/data/trending.db /data/trending.db 2>/dev/null || true; fi
-RUN if [ -f /app/data/repos.json ]; then cp /app/data/repos.json /data/repos.json 2>/dev/null || true; fi
-RUN if [ -f /app/data/subscription.json ]; then cp /app/data/subscription.json /data/subscription.json 2>/dev/null || true; fi
+# 注意：subscription.json 和 .secret_key 已被 .dockerignore 排除，不会进入镜像
+# 合并为单个 RUN 减少镜像层数
+RUN set -eux; \
+    if [ -d /app/data/reports ]; then cp -r /app/data/reports/* /data/reports/ 2>/dev/null || true; fi; \
+    if [ -f /app/data/trending.db ]; then cp /app/data/trending.db /data/trending.db 2>/dev/null || true; fi; \
+    if [ -f /app/data/repos.json ]; then cp /app/data/repos.json /data/repos.json 2>/dev/null || true; fi
+
+# 健康检查（Render 等编排平台可探测容器健康状态）
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/api/status', timeout=3).status==200 else 1)" || exit 1
+
+# 创建非 root 用户并切换（最小权限原则）
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && chown -R app:app /app /data
+USER app
 
 # HF Spaces 默认端口 7860
 ENV PORT=7860
 ENV FLASK_DEBUG=0
 EXPOSE 7860
 
-# 用 gunicorn 启动（生产级 WSGI 服务器）
+# 用 gunicorn 启动（生产级 WSGI 服务器，4 线程支持并发）
 # HF Spaces 推荐用 gunicorn + 同步 worker
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "2", "--threads", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "wsgi:application"]

@@ -42,9 +42,15 @@ def _load_subscribers() -> list[str]:
         logger.error(f"Failed to read subscription.json: {e}")
         return []
 
+    # 兼容旧的单 dict 格式
+    if isinstance(subs, dict):
+        subs = [subs]
+
     emails = []
     seen = set()
     for sub in subs:
+        if not isinstance(sub, dict):
+            continue
         email = decrypt_if_needed(sub.get("email") or "").strip().lower()
         # 过滤测试邮箱和空值
         if not email or email in seen:

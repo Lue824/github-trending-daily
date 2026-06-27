@@ -117,11 +117,13 @@ def _maintenance_activity_score(extra: dict) -> float:
     """维护活跃度得分"""
     if not extra:
         return 0.3
-    last_push = extra.get("last_push_days", 999)
+    last_push = extra.get("last_push_days")
     commits = extra.get("commits_12w", 0)
 
-    # 最近推送
-    if last_push <= 1:
+    # 最近推送 — None 视为未知，给中等分而非满分
+    if last_push is None:
+        push_score = 0.3
+    elif last_push <= 1:
         push_score = 1.0
     elif last_push <= 7:
         push_score = 0.8
@@ -144,7 +146,8 @@ def _engineering_maturity_score(repo: dict, extra: dict) -> float:
         return 0.3
     releases = extra.get("releases", 0)
     contributors = extra.get("contributors", 0)
-    created_days = extra.get("created_days", 365)
+    # None 视为未知，按 0 计算年龄分（避免老项目加分，但也不惩罚）
+    created_days = extra.get("created_days") or 0
 
     # Release 稳定性
     release_score = _log_norm(releases, base=5, scale=1.5)
@@ -196,13 +199,13 @@ def _trap_signals(repo: dict, extra: dict) -> int:
         if stars > 0 and open_issues / stars > 0.01 and open_issues > 10:
             signals += 1
 
-        last_push = extra.get("last_push_days", 0)
-        if last_push > 180:
+        last_push = extra.get("last_push_days")
+        if last_push is not None and last_push > 180:
             signals += 1
 
         releases = extra.get("releases", 0)
-        created_days = extra.get("created_days", 0)
-        if releases == 0 and created_days > 180 and stars > 1000:
+        created_days = extra.get("created_days")
+        if releases == 0 and created_days is not None and created_days > 180 and stars > 1000:
             signals += 1
 
         contributors = extra.get("contributors", 0)
@@ -291,8 +294,9 @@ def score_potential(repo: dict, extra: dict) -> float:
     Formula: 增长势头×0.5 + 初生质量×0.3 + 赛道热度×0.2
     Threshold: 创建 <= 90 天
     """
-    created_days = extra.get("created_days", 999) if extra else 999
-    if created_days > 90:
+    created_days = extra.get("created_days") if extra else None
+    # None（未获取到）或 > 90 天，都不得分（防止误判老项目为潜力新星）
+    if created_days is None or created_days > 90:
         return 0.0
     growth = _growth_score(repo)
     quality = score_quality(repo, extra)

@@ -42,6 +42,7 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   animation: fadeInUp 0.6s ease;
 }
+.card.wide { max-width: 720px; }
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
@@ -81,6 +82,14 @@ h1 {
   margin-bottom: 24px;
   font-size: 0.85em;
 }
+.status.warn {
+  background: rgba(210, 153, 29, 0.1);
+  border-color: rgba(210, 153, 29, 0.3);
+}
+.status.err {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: rgba(248, 81, 73, 0.3);
+}
 .status-dot {
   width: 8px;
   height: 8px;
@@ -88,6 +97,8 @@ h1 {
   background: var(--accent-green);
   animation: pulse 1.5s ease-in-out infinite;
 }
+.status.warn .status-dot { background: var(--accent-orange); }
+.status.err .status-dot { background: var(--accent-red); }
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.3); }
@@ -144,6 +155,12 @@ h1 {
   box-shadow: 0 6px 20px rgba(88, 166, 255, 0.4);
 }
 .btn:active { transform: translateY(0); }
+.btn.secondary {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  margin-left: 8px;
+}
 .meta {
   margin-top: 24px;
   padding-top: 20px;
@@ -178,17 +195,87 @@ h1 {
 }
 .feature-icon { font-size: 1.4em; display: block; margin-bottom: 4px; }
 .feature-text { color: var(--text-dim); }
+
+/* ─── 失效态：恐龙游戏 ─── */
+.dead-screen { display: none; }
+.dead-screen.active { display: block; }
+.game-wrap {
+  margin: 16px 0;
+  padding: 12px;
+  background: #0a0e14;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+#dinoCanvas {
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  height: 180px;
+  margin: 0 auto;
+  background: #0a0e14;
+  image-rendering: pixelated;
+}
+.game-hint {
+  color: var(--text-dim);
+  font-size: 0.82em;
+  margin-top: 8px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+.game-hint kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent);
+  margin: 0 2px;
+}
+.game-score {
+  display: inline-block;
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.85em;
+  margin-left: 12px;
+}
+.recover-info {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: rgba(210, 153, 29, 0.08);
+  border: 1px solid rgba(210, 153, 29, 0.3);
+  border-radius: 8px;
+  font-size: 0.82em;
+  color: var(--accent-orange);
+  text-align: left;
+  line-height: 1.7;
+}
+.recover-info code {
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.95em;
+}
+.countdown-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--accent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  margin: 0 2px;
+}
 </style>
 </head>
 <body>
-<div class="card">
+
+<!-- ====== 正常态：探活中 / 倒计时跳转 ====== -->
+<div class="card" id="liveCard">
   <span class="badge">🏆 TRAE AI 创造力大赛</span>
   <h1>GitHub Trending Daily</h1>
   <p class="subtitle">GitHub 热门项目智能日报系统</p>
 
   <div class="status" id="statusBox">
     <span class="status-dot"></span>
-    <span id="statusText">正在获取最新访问地址...</span>
+    <span id="statusText">正在检测服务可用性...</span>
   </div>
 
   <div class="spinner" id="spinner"></div>
@@ -222,18 +309,56 @@ h1 {
   </div>
 </div>
 
+<!-- ====== 失效态：恐龙游戏 + 自动恢复 ====== -->
+<div class="card wide dead-screen" id="deadCard">
+  <span class="badge" style="background: rgba(248, 81, 73, 0.15); color: var(--accent-red);">⚠ 服务暂时不可达</span>
+  <h1 style="background: linear-gradient(90deg, var(--accent-orange), var(--accent-red)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Tunnel 连接已断开</h1>
+  <p class="subtitle">服务 URL 已失效，正在自动恢复中，请稍候</p>
+
+  <div class="status warn">
+    <span class="status-dot"></span>
+    <span id="recoverText">守护进程正在重启 cloudflared 并同步新 URL...</span>
+  </div>
+
+  <div class="game-wrap">
+    <canvas id="dinoCanvas" width="600" height="180"></canvas>
+    <div class="game-hint">
+      按 <kbd>空格</kbd> 或 <kbd>↑</kbd> 跳跃 · 避开仙人掌 · 当前分数<span class="game-score" id="gameScore">0</span> · 最高分<span class="game-score" id="gameBest">0</span>
+    </div>
+  </div>
+
+  <div class="recover-info">
+    <div>⏱ 距下次重新探测：<span class="countdown-pill" id="retryCountdown">30</span>秒</div>
+    <div>📡 失效 URL：<code id="deadUrlDisplay">--</code></div>
+    <div>🔧 已触发守护进程恢复（<code>url_monitor.py</code> 在持续重启 cloudflared）</div>
+    <div>✅ 新 URL 就绪后将自动跳转，无需手动刷新</div>
+  </div>
+
+  <button class="btn secondary" id="retryNowBtn">立即重试</button>
+  <a class="btn secondary" id="deadOpenBtn" target="_blank">仍要访问旧地址</a>
+</div>
+
 <script>
 const REDIRECT_FILE = './redirect.json';
 const COUNTDOWN_SECONDS = 3;
+const PING_TIMEOUT_MS = 5000;
+const RETRY_INTERVAL_MS = 30000; // 失效态每 30s 重新探测
+
+// ─── UI helpers ───
+function setStatus(text, kind) {
+  document.getElementById('statusText').textContent = text;
+  const box = document.getElementById('statusBox');
+  box.classList.remove('warn', 'err');
+  if (kind === 'warn') box.classList.add('warn');
+  if (kind === 'err') box.classList.add('err');
+}
 
 function showError(msg) {
   document.getElementById('spinner').style.display = 'none';
-  document.getElementById('errorBox').style.display = 'block';
-  document.getElementById('errorBox').textContent = msg;
-  document.getElementById('statusBox').style.background = 'rgba(248, 81, 73, 0.1)';
-  document.getElementById('statusBox').style.borderColor = 'rgba(248, 81, 73, 0.3)';
-  document.getElementById('statusText').textContent = '获取地址失败';
-  document.querySelector('.status-dot').style.background = 'var(--accent-red)';
+  const ebox = document.getElementById('errorBox');
+  ebox.style.display = 'block';
+  ebox.textContent = msg;
+  setStatus('获取地址失败', 'err');
 }
 
 function showSuccess(url, updatedAt) {
@@ -241,41 +366,311 @@ function showSuccess(url, updatedAt) {
   document.getElementById('urlBox').textContent = url;
   document.getElementById('urlBox').style.display = 'block';
   document.getElementById('urlLabel').style.display = 'block';
-  document.getElementById('urlBox').style.display = 'block';
   const btn = document.getElementById('goBtn');
   btn.href = url;
   btn.style.display = 'inline-block';
   document.getElementById('updatedAt').textContent = updatedAt || '未知';
-  document.getElementById('statusText').textContent = COUNTDOWN_SECONDS + ' 秒后自动跳转...';
+  setStatus(COUNTDOWN_SECONDS + ' 秒后自动跳转...');
 
   let count = COUNTDOWN_SECONDS;
   const timer = setInterval(() => {
     count--;
     if (count > 0) {
-      document.getElementById('statusText').textContent = count + ' 秒后自动跳转...';
+      setStatus(count + ' 秒后自动跳转...');
     } else {
       clearInterval(timer);
-      document.getElementById('statusText').textContent = '正在跳转...';
+      setStatus('正在跳转...');
       window.location.href = url;
     }
   }, 1000);
 }
 
-fetch(REDIRECT_FILE, { cache: 'no-store' })
-  .then(r => {
-    if (!r.ok) throw new Error('配置文件不存在 (HTTP ' + r.status + ')');
-    return r.json();
-  })
-  .then(data => {
+// ─── 探活：no-cors fetch，能在超时内完成即视为可用 ───
+async function pingUrl(url, timeoutMs = PING_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    // no-cors 模式下读不到响应，但网络层失败（DNS / 连接拒绝 / 超时）会被 reject
+    await fetch(url, { mode: 'no-cors', signal: controller.signal, cache: 'no-store', redirect: 'follow' });
+    clearTimeout(timer);
+    return true;
+  } catch (e) {
+    clearTimeout(timer);
+    return false;
+  }
+}
+
+async function fetchRedirectJson() {
+  const r = await fetch(REDIRECT_FILE, { cache: 'no-store' });
+  if (!r.ok) throw new Error('配置文件不存在 (HTTP ' + r.status + ')');
+  return r.json();
+}
+
+// ─── 失效态切换 ───
+function showDeadScreen(url) {
+  document.getElementById('liveCard').style.display = 'none';
+  document.getElementById('deadCard').classList.add('active');
+  document.getElementById('deadUrlDisplay').textContent = url || '(未知)';
+  const deadOpenBtn = document.getElementById('deadOpenBtn');
+  if (url) deadOpenBtn.href = url;
+  startRetryLoop(url);
+  startDinoGame();
+}
+
+let retryTimerId = null;
+let retryCountdownTimerId = null;
+
+function stopRetryLoop() {
+  if (retryTimerId) { clearInterval(retryTimerId); retryTimerId = null; }
+  if (retryCountdownTimerId) { clearInterval(retryCountdownTimerId); retryCountdownTimerId = null; }
+}
+
+async function attemptRecover() {
+  stopRetryLoop();
+  try {
+    document.getElementById('recoverText').textContent = '正在重新拉取最新地址并探活...';
+    const data = await fetchRedirectJson();
+    const url = (data.url || '').trim();
+    if (!url || !url.startsWith('http')) throw new Error('redirect.json 中无有效 url');
+
+    document.getElementById('deadUrlDisplay').textContent = url;
+    document.getElementById('deadOpenBtn').href = url;
+
+    const alive = await pingUrl(url);
+    if (alive) {
+      document.getElementById('recoverText').textContent = '服务已恢复，正在跳转...';
+      stopDinoGame();
+      window.location.href = url;
+      return;
+    }
+    document.getElementById('recoverText').textContent = '地址仍不可达，守护进程正在恢复 cloudflared...';
+    startRetryLoop(url);
+  } catch (e) {
+    document.getElementById('recoverText').textContent = '拉取失败：' + e.message + '，等待重试...';
+    startRetryLoop('');
+  }
+}
+
+function startRetryLoop(url) {
+  let remaining = RETRY_INTERVAL_MS / 1000;
+  document.getElementById('retryCountdown').textContent = remaining;
+  retryCountdownTimerId = setInterval(() => {
+    remaining--;
+    if (remaining < 0) remaining = RETRY_INTERVAL_MS / 1000;
+    document.getElementById('retryCountdown').textContent = remaining;
+  }, 1000);
+  retryTimerId = setInterval(() => attemptRecover(), RETRY_INTERVAL_MS);
+}
+
+document.getElementById('retryNowBtn').addEventListener('click', attemptRecover);
+
+// ─── 小恐龙跑酷游戏 ───
+let dinoGame = null;
+function startDinoGame() {
+  if (dinoGame) { dinoGame.resume(); return; }
+  dinoGame = new DinoGame();
+  dinoGame.start();
+}
+function stopDinoGame() {
+  if (dinoGame) dinoGame.pause();
+}
+
+class DinoGame {
+  constructor() {
+    this.canvas = document.getElementById('dinoCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.W = this.canvas.width;
+    this.H = this.canvas.height;
+    this.groundY = this.H - 30;
+
+    this.dino = { x: 50, y: this.groundY - 30, w: 22, h: 30, vy: 0, jumping: false };
+    this.gravity = 0.7;
+    this.jumpV = -11;
+
+    this.cacti = [];
+    this.clouds = [];
+    this.speed = 5;
+    this.score = 0;
+    this.best = parseInt(localStorage.getItem('dino_best') || '0', 10);
+    document.getElementById('gameBest').textContent = this.best;
+    this.spawnTimer = 0;
+    this.cloudTimer = 0;
+    this.running = false;
+    this.gameOver = false;
+
+    this.bindKeys();
+  }
+  bindKeys() {
+    this._keyHandler = (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        if (this.gameOver) { this.reset(); this.start(); return; }
+        if (!this.dino.jumping) {
+          this.dino.vy = this.jumpV;
+          this.dino.jumping = true;
+        }
+      }
+    };
+    document.addEventListener('keydown', this._keyHandler);
+    // 触屏支持
+    this._touchHandler = (e) => {
+      if (this.gameOver) { this.reset(); this.start(); return; }
+      if (!this.dino.jumping) { this.dino.vy = this.jumpV; this.dino.jumping = true; }
+    };
+    this.canvas.addEventListener('touchstart', (e) => { e.preventDefault(); this._touchHandler(); }, { passive: false });
+    this.canvas.addEventListener('click', this._touchHandler);
+  }
+  reset() {
+    this.dino.y = this.groundY - 30;
+    this.dino.vy = 0;
+    this.dino.jumping = false;
+    this.cacti = [];
+    this.clouds = [];
+    this.score = 0;
+    this.speed = 5;
+    this.gameOver = false;
+    this.spawnTimer = 0;
+    this.cloudTimer = 0;
+    document.getElementById('gameScore').textContent = '0';
+  }
+  start() { this.running = true; this.loop(); }
+  pause() { this.running = false; }
+  resume() { if (!this.running) { this.running = true; this.loop(); } }
+  loop() {
+    if (!this.running) return;
+    this.update();
+    this.draw();
+    requestAnimationFrame(() => this.loop());
+  }
+  update() {
+    if (this.gameOver) return;
+    // 恐龙物理
+    this.dino.y += this.dino.vy;
+    this.dino.vy += this.gravity;
+    if (this.dino.y >= this.groundY - this.dino.h) {
+      this.dino.y = this.groundY - this.dino.h;
+      this.dino.vy = 0;
+      this.dino.jumping = false;
+    }
+    // 生成仙人掌
+    this.spawnTimer--;
+    if (this.spawnTimer <= 0) {
+      const minGap = Math.max(40, 90 - this.speed * 3);
+      const maxGap = Math.max(80, 160 - this.speed * 3);
+      this.spawnTimer = minGap + Math.floor(Math.random() * (maxGap - minGap));
+      const h = 18 + Math.floor(Math.random() * 22);
+      this.cacti.push({ x: this.W, y: this.groundY - h, w: 12 + Math.floor(Math.random() * 8), h });
+    }
+    // 生成云
+    this.cloudTimer--;
+    if (this.cloudTimer <= 0) {
+      this.cloudTimer = 80 + Math.floor(Math.random() * 80);
+      this.clouds.push({ x: this.W, y: 20 + Math.floor(Math.random() * 50), w: 36 });
+    }
+    // 移动
+    this.cacti.forEach(c => c.x -= this.speed);
+    this.clouds.forEach(c => c.x -= 2);
+    this.cacti = this.cacti.filter(c => c.x + c.w > 0);
+    this.clouds = this.clouds.filter(c => c.x + c.w > 0);
+    // 碰撞
+    for (const c of this.cacti) {
+      if (this.dino.x < c.x + c.w && this.dino.x + this.dino.w > c.x &&
+          this.dino.y < c.y + c.h && this.dino.y + this.dino.h > c.y) {
+        this.endGame();
+        return;
+      }
+    }
+    // 计分
+    this.score++;
+    document.getElementById('gameScore').textContent = Math.floor(this.score / 5);
+    if (this.score % 200 === 0) this.speed += 0.4;
+  }
+  endGame() {
+    this.gameOver = true;
+    const sc = Math.floor(this.score / 5);
+    if (sc > this.best) {
+      this.best = sc;
+      localStorage.setItem('dino_best', String(sc));
+      document.getElementById('gameBest').textContent = this.best;
+    }
+  }
+  draw() {
+    const ctx = this.ctx;
+    ctx.fillStyle = '#0a0e14';
+    ctx.fillRect(0, 0, this.W, this.H);
+    // 地面
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, this.groundY);
+    ctx.lineTo(this.W, this.groundY);
+    ctx.stroke();
+    // 地面虚线
+    ctx.setLineDash([8, 12]);
+    ctx.beginPath();
+    ctx.moveTo(0, this.groundY + 8);
+    ctx.lineTo(this.W, this.groundY + 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 云
+    ctx.fillStyle = '#8b949e';
+    for (const c of this.clouds) {
+      ctx.fillRect(c.x, c.y, c.w, 6);
+      ctx.fillRect(c.x + 6, c.y - 4, c.w - 12, 4);
+      ctx.fillRect(c.x + 12, c.y, c.w - 24, 4);
+    }
+    // 仙人掌
+    ctx.fillStyle = '#3fb950';
+    for (const c of this.cacti) {
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+      ctx.fillRect(c.x - 4, c.y + 6, 4, 8);
+      ctx.fillRect(c.x + c.w, c.y + 8, 4, 6);
+    }
+    // 恐龙（简笔像素风）
+    ctx.fillStyle = '#58a6ff';
+    const d = this.dino;
+    ctx.fillRect(d.x, d.y, 12, 22);          // 身体
+    ctx.fillRect(d.x + 12, d.y - 6, 10, 12); // 头
+    ctx.fillRect(d.x + 18, d.y - 4, 4, 2);   // 眼区
+    ctx.fillRect(d.x + 2, d.y + 22, 4, 8);    // 后腿
+    ctx.fillRect(d.x + 10, d.y + 22, 4, 8);   // 前腿
+    // 死亡提示
+    if (this.gameOver) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(0, 0, this.W, this.H);
+      ctx.fillStyle = '#f85149';
+      ctx.font = 'bold 22px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', this.W / 2, this.H / 2 - 10);
+      ctx.fillStyle = '#c9d1d9';
+      ctx.font = '13px Consolas, monospace';
+      ctx.fillText('按 空格 / 点击 重新开始', this.W / 2, this.H / 2 + 16);
+    }
+  }
+}
+
+// ─── 主入口：加载 redirect.json → 探活 → 跳转/失效态 ───
+  document.getElementById('spinner').style.display = 'block';
+  setStatus('正在获取最新访问地址...');
+  try {
+    const data = await fetchRedirectJson();
     const url = (data.url || '').trim();
     if (!url || !url.startsWith('http')) {
       throw new Error('redirect.json 中未配置有效的 url 字段');
     }
-    showSuccess(url, data.updated_at);
-  })
-  .catch(err => {
-    showError('无法读取最新地址：' + err.message + '。请稍后刷新重试，或联系作者更新 redirect.json');
-  });
+    setStatus('地址已获取，正在探活...', 'warn');
+    const alive = await pingUrl(url);
+    if (alive) {
+      showSuccess(url, data.updated_at);
+    } else {
+      // URL 失效 → 进入失效态
+      document.getElementById('spinner').style.display = 'none';
+      showDeadScreen(url);
+    }
+  } catch (err) {
+    showError('无法读取最新地址：' + err.message + '。请稍后刷新重试');
+  }
+})();
 </script>
 </body>
 </html>

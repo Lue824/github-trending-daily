@@ -70,13 +70,15 @@ def _match_repo(repo: dict, keywords: list[str], exclude: list[str],
         return False
     if repo.get("stars", 0) < min_stars:
         return False
-    # 短关键词（≤3字符且纯字母）用词边界匹配，避免 "dsp" 匹配 "handsfree"
+    # 关键词匹配：英文用词边界（\b）防止子串误匹配，中文用子串匹配
     for kw in keywords:
         kw_lower = kw.lower()
-        if len(kw_lower) <= 3 and kw_lower.isalpha():
+        if kw_lower.isascii():
+            # 英文关键词：用词边界匹配，防止 "crypto" 命中 "cryptography" 等
             if re.search(r'\b' + re.escape(kw_lower) + r'\b', text):
                 return True
         else:
+            # 中文关键词：用子串匹配（中文无词边界概念）
             if kw_lower in text:
                 return True
     return False
@@ -141,9 +143,9 @@ def _card(repo: dict, idx: int, api_key: str = "", provider: str = "") -> str:
     # 多维度解读
     dims = _gen_dimensions(repo, cn_intro, api_key=api_key, provider=provider)
     dims_html = "".join(
-        f'<div class="dim-item"><span class="dim-icon">{d["icon"]}</span>'
-        f'<span class="dim-label">{d["label"]}</span>'
-        f'<span class="dim-text">{d["text"]}</span></div>'
+        f'<div class="dim-item"><span class="dim-icon">{esc(d["icon"])}</span>'
+        f'<span class="dim-label">{esc(d["label"])}</span>'
+        f'<span class="dim-text">{esc(d["text"])}</span></div>'
         for d in dims
     )
 
@@ -293,12 +295,14 @@ def generate_custom_report(
             github_results = search_high_value_repos(keywords, per_page=30)
             if github_results:
                 github_results = _compute_scores_for_github_repos(github_results)
+                # 用 _match_repo 二次过滤，剔除 GitHub OR 搜索的假阳性（如 crypto 命中 cryptography）
+                github_results = [r for r in github_results if _match_repo(r, keywords, exclude, language, min_stars)]
                 for r in github_results:
                     r["_source_note"] = "github_search"
                 matched = github_results
                 using_github_as_primary = True
                 lang_counter = Counter(r.get("language", "Unknown") for r in matched)
-                logger.info(f"GitHub search found {len(matched)} repos for '{query}'")
+                logger.info(f"GitHub search found {len(matched)} repos for '{query}' (after dedup filter)")
         except Exception as e:
             logger.warning(f"GitHub direct search failed: {e}")
 
@@ -319,6 +323,8 @@ def generate_custom_report(
             from src.fetcher.search_api import search_high_value_repos
             logger.info(f"Partial match ({len(matched)}/{total_demand} needed), supplementing with high-value repos...")
             high_value_pool = search_high_value_repos(keywords, per_page=30)
+            # 同样用 _match_repo 二次过滤补充池
+            high_value_pool = [r for r in high_value_pool if _match_repo(r, keywords, exclude, language, min_stars)]
             for r in high_value_pool:
                 r["_source_note"] = "high_value"
             logger.info(f"High-value repos found: {len(high_value_pool)}")
@@ -355,6 +361,8 @@ def generate_custom_report(
         for r in items:
             if len(picked) >= limit:
                 break
+            if r["full_name"] in used_full_names:
+                continue
             picked.append(r)
             used_full_names.add(r["full_name"])
 
@@ -400,8 +408,8 @@ def generate_custom_report(
             )
 
             sections_html.append(f'<section class="report-section">')
-            sections_html.append(f'<h2><span class="icon">{icon}</span>{title}</h2>')
-            sections_html.append(f'<div class="subtitle">{desc}</div>')
+            sections_html.append(f'<h2><span class="icon">{esc(icon)}</span>{esc(title)}</h2>')
+            sections_html.append(f'<div class="subtitle">{esc(desc)}</div>')
             sections_html.append(
                 f'<div class="trend-block dashboard-block">'
                 f'<div class="dashboard-grid">'

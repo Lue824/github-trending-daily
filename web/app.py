@@ -10,8 +10,8 @@ import os
 import sys
 import logging
 import json
+import secrets
 from datetime import datetime, timezone
-
 from flask import Flask, request, jsonify, send_from_directory
 
 # 确保 src 目录在路径中
@@ -35,6 +35,70 @@ _REPORT_DIR = REPORTS_DIR
 
 if not os.path.exists(_REPORT_DIR):
     os.makedirs(_REPORT_DIR, exist_ok=True)
+
+
+# ── /api/custom 缓存 + 限流（轻量内存实现，不引入新依赖）──
+import threading
+import time as _time
+
+_CUSTOM_CACHE_LOCK = threading.Lock()
+_CUSTOM_CACHE: dict = {}  # key: (query, has_key, provider) -> (html, payload, expire_at)
+_CUSTOM_CACHE_TTL = 600  # 10 分钟
+_CUSTOM_CACHE_MAXSIZE = 100
+
+_RATE_LIMIT_LOCK = threading.Lock()
+_RATE_LIMIT: dict = {}  # ip -> [timestamps...]
+_RATE_LIMIT_WINDOW = 60  # 60 秒
+_RATE_LIMIT_MAX = 5  # 每 IP 每分钟最多 5 次 /api/custom
+
+
+def _cache_get(key):
+    """从缓存读取，过期自动失效"""
+    with _CUSTOM_CACHE_LOCK:
+        entry = _CUSTOM_CACHE.get(key)
+        if not entry:
+            return None
+        html, payload, expire_at = entry
+        if _time.time() > expire_at:
+            _CUSTOM_CACHE.pop(key, None)
+            return None
+        return payload
+
+
+def _cache_set(key, payload):
+    """写入缓存，超过 maxsize 时淘汰最旧条目"""
+    with _CUSTOM_CACHE_LOCK:
+        if len(_CUSTOM_CACHE) >= _CUSTOM_CACHE_MAXSIZE:
+            # 淘汰最早过期的一条
+            if _CUSTOM_CACHE:
+                oldest_key = min(_CUSTOM_CACHE, key=lambda k: _CUSTOM_CACHE[k][2])
+                _CUSTOM_CACHE.pop(oldest_key, None)
+        _CUSTOM_CACHE[key] = ("", payload, _time.time() + _CUSTOM_CACHE_TTL)
+
+
+def _check_rate_limit(ip: str) -> tuple[bool, int]:
+    """检查 IP 速率限制，返回 (允许, 剩余次数)"""
+    now = _time.time()
+    with _RATE_LIMIT_LOCK:
+        timestamps = _RATE_LIMIT.get(ip, [])
+        # 清理过期记录
+        timestamps = [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]
+        if len(timestamps) >= _RATE_LIMIT_MAX:
+            _RATE_LIMIT[ip] = timestamps
+            return False, 0
+        timestamps.append(now)
+        _RATE_LIMIT[ip] = timestamps
+        return True, _RATE_LIMIT_MAX - len(timestamps)
+
+
+# 静态资源（首页）加 HTTP 缓存头提升重复访问体验
+@app.after_request
+def _add_cache_headers(resp):
+    if request.path == "/" or request.path.startswith("/reports/"):
+        resp.headers["Cache-Control"] = "public, max-age=60"
+    elif request.path.startswith("/api/daily") or request.path.startswith("/api/history"):
+        resp.headers["Cache-Control"] = "public, max-age=60"
+    return resp
 
 
 # ════════════════════════════════════════════════════════════
@@ -114,6 +178,24 @@ def api_custom():
         return jsonify({"html": '<p style="color:var(--text-dim);text-align:center;padding:40px">'
                                 '请输入话题关键词，例如：量化交易、AI Agent、游戏引擎</p>', "topic": ""})
 
+    # IP 速率限制（防止恶意调用打满 GitHub Search API 配额）
+    ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "unknown"
+    allowed, remaining = _check_rate_limit(ip)
+    if not allowed:
+        logger.warning(f"Rate limit exceeded for IP: {ip}")
+        return jsonify({
+            "html": '<p style="color:var(--accent-orange);text-align:center;padding:40px">'
+                    '请求过于频繁，请 1 分钟后再试</p>',
+            "topic": "rate_limited"
+        }), 429
+
+    # 缓存命中检查（key 不含 api_key 明文，仅含是否带 key 标记，保护用户隐私）
+    cache_key = (query.lower(), bool(api_key), provider.lower())
+    cached = _cache_get(cache_key)
+    if cached:
+        logger.info(f"Cache hit for query: {query[:30]}")
+        return jsonify({**cached, "cached": True, "remaining": remaining})
+
     # 从数据库读取当天 repos（不触发 pipeline，避免超时）
     try:
         repos = get_today_repos()
@@ -133,13 +215,17 @@ def api_custom():
         basic_repos = sorted(repos, key=lambda r: r.get("hot_score", 0), reverse=True)[:30]
         html = generate_custom_report(repos, query, parsed, sections, basic_repos=basic_repos,
                                        api_key=api_key, provider=provider)
-        return jsonify({
+        payload = {
             "html": html,
             "topic": parsed.get("topic", query),
             "keywords": parsed.get("keywords", []),
             "source": parsed.get("source", ""),
             "used_llm": parsed.get("source") == "llm",
-        })
+            "remaining": remaining,
+        }
+        # 写入缓存（同 query 10 分钟内复用结果，降低 GitHub API 与 LLM 调用）
+        _cache_set(cache_key, payload)
+        return jsonify(payload)
     except Exception as e:
         logger.error(f"Custom report failed: {e}", exc_info=True)
         # 不向客户端暴露内部错误细节
@@ -171,6 +257,8 @@ def api_subscribe():
         "type": sub_type,
         "email": email,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        # 生成退订 token，用于邮件链接退订，防止 IDOR
+        "unsubscribe_token": secrets.token_urlsafe(32),
     }
 
     if sub_type == "custom":
@@ -285,8 +373,51 @@ def send_subscription_email(subscription: dict):
 
 @app.route("/reports/<path:filename>")
 def serve_report(filename):
-    """提供历史报告文件"""
-    return send_from_directory(_REPORT_DIR, filename)
+    """提供历史报告文件
+
+    注：报告文件是 HTML 片段（以 <div> 开头，无完整 HTML 文档结构）。
+    直接访问会触发浏览器怪异模式、无 viewport、编码猜测错误。
+    本路由为兼容现有报告文件，在响应中包裹完整 HTML 文档壳。
+    """
+    # 安全校验：防止路径遍历
+    if ".." in filename or filename.startswith("/"):
+        return "Not Found", 404
+
+    try:
+        with open(os.path.join(_REPORT_DIR, filename), "r", encoding="utf-8") as f:
+            fragment = f.read()
+    except (FileNotFoundError, OSError):
+        return "Not Found", 404
+
+    # 从文件名提取日期用于标题
+    base = os.path.basename(filename)
+    title = "GitHub Trending 报告"
+    if base.startswith("daily-6s-"):
+        date_str = base.replace("daily-6s-", "").replace(".html", "")
+        title = f"GitHub 每日热点 — {date_str}"
+    elif base.startswith("ai-"):
+        title = "GitHub AI 深度日报"
+    elif base.startswith("custom-"):
+        title = "GitHub 自定义话题日报"
+
+    # 包裹完整 HTML 文档壳：viewport + charset + 内联基础样式
+    wrapped_html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+body {{ margin: 0; padding: 0; background: #f6f8fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }}
+* {{ box-sizing: border-box; }}
+</style>
+</head>
+<body>
+{fragment}
+</body>
+</html>"""
+    from flask import Response
+    return Response(wrapped_html, mimetype="text/html; charset=utf-8")
 
 
 @app.route("/api/status")
@@ -395,35 +526,103 @@ def api_subscriptions():
         return jsonify({"subscriptions": [], "error": "读取失败"}), 500
 
 
-@app.route("/api/unsubscribe", methods=["POST"])
+@app.route("/api/unsubscribe", methods=["POST", "GET"])
 def api_unsubscribe():
-    """退订 — 根据邮箱删除订阅"""
+    """退订 — 支持 token 直接退订，或邮箱触发确认邮件（防 IDOR）
+
+    两种方式：
+    1. POST/GET 带 token 参数 → 校验 token 直接退订（用户从邮件链接点击）
+    2. POST 仅带 email → 不直接退订，发送确认邮件到该邮箱（含 token 链接）
+    """
     from config import DATA_DIR
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email", "") or "").strip().lower()
-    if not email:
-        return jsonify({"ok": False, "msg": "请输入邮箱"}), 400
+    # 兼容 GET（邮件链接直接点击）和 POST（前端表单）
+    if request.method == "GET":
+        token = (request.args.get("token", "") or "").strip()
+        email = (request.args.get("email", "") or "").strip().lower()
+    else:
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token", "") or "").strip()
+        email = (data.get("email", "") or "").strip().lower()
 
     sub_path = os.path.join(DATA_DIR, "subscription.json")
     if not os.path.exists(sub_path):
         return jsonify({"ok": False, "msg": "无订阅记录"}), 404
+
     try:
         with open(sub_path, "r", encoding="utf-8") as f:
             subs = json.load(f)
         if isinstance(subs, dict):
             subs = [subs]
+    except Exception as e:
+        logger.error(f"Unsubscribe read failed: {e}")
+        return jsonify({"ok": False, "msg": "读取订阅失败"}), 500
+
+    # 方式 1：带 token 直接退订
+    if token:
         original_count = len(subs)
-        # Filter out matching emails (decrypt for comparison)
-        subs = [s for s in subs if decrypt_if_needed(s.get("email", "")).lower() != email]
+        subs = [s for s in subs if s.get("unsubscribe_token") != token]
         removed = original_count - len(subs)
         if removed == 0:
-            return jsonify({"ok": False, "msg": "未找到对应订阅"}), 404
-        with open(sub_path, "w", encoding="utf-8") as f:
-            json.dump(subs, f, ensure_ascii=False, indent=2)
-        return jsonify({"ok": True, "msg": f"已退订 {removed} 个订阅"})
+            return jsonify({"ok": False, "msg": "无效或已过期的退订链接"}), 404
+        try:
+            with open(sub_path, "w", encoding="utf-8") as f:
+                json.dump(subs, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Unsubscribe save failed: {e}")
+            return jsonify({"ok": False, "msg": "退订失败"}), 500
+        return jsonify({"ok": True, "msg": f"已成功退订 {removed} 个订阅"})
+
+    # 方式 2：仅邮箱 → 发送确认邮件（含 token 链接）
+    if not email:
+        return jsonify({"ok": False, "msg": "请输入邮箱或提供 token"}), 400
+
+    # 查找该邮箱的所有订阅（含 token）
+    matched_subs = [s for s in subs if decrypt_if_needed(s.get("email", "")).lower() == email]
+    if not matched_subs:
+        return jsonify({"ok": False, "msg": "未找到对应订阅"}), 404
+
+    # 发送退订确认邮件（含 token 链接）
+    try:
+        _send_unsubscribe_confirmation(email, matched_subs)
+        masked = email[:2] + "***" + email[email.index("@"):] if "@" in email else "***"
+        return jsonify({"ok": True, "msg": f"已向 {masked} 发送退订确认邮件，请查收后点击链接完成退订"})
     except Exception as e:
-        logger.error(f"Unsubscribe failed: {e}")
-        return jsonify({"ok": False, "msg": "退订失败"}), 500
+        logger.error(f"Send unsubscribe confirmation failed: {e}", exc_info=True)
+        return jsonify({"ok": False, "msg": "发送确认邮件失败，请稍后重试"}), 500
+
+
+def _send_unsubscribe_confirmation(email: str, subs: list):
+    """发送退订确认邮件，包含每个订阅的退订链接"""
+    from src.notifier.email_sender import send_email
+
+    # 构建退订链接列表
+    base_url = request.host_url.rstrip("/")
+    links_html = []
+    for s in subs:
+        token = s.get("unsubscribe_token", "")
+        sub_type = s.get("type", "basic")
+        topic = s.get("topic", "")
+        type_label = f"自定义日报（{topic}）" if sub_type == "custom" and topic else "基础日报"
+        if token:
+            url = f"{base_url}/api/unsubscribe?token={token}"
+            links_html.append(
+                f'<p style="margin:12px 0;padding:10px;background:#f6f8fa;border-radius:6px;">'
+                f'{type_label} <a href="{url}" style="color:#0969da;">点击退订</a>'
+                f'</p>'
+            )
+    if not links_html:
+        return
+
+    html = f"""<html><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+<h2 style="color:#1f2328;">退订确认</h2>
+<p>您好，</p>
+<p>我们收到了针对您邮箱的退订请求。为防止他人恶意退订您的订阅，请点击下方链接确认退订：</p>
+{"".join(links_html)}
+<p style="color:#57606a;font-size:13px;margin-top:20px;">如果您没有发起退订请求，请忽略此邮件。链接有效，他人无法仅凭邮箱退订您的订阅。</p>
+<hr style="margin:24px 0;border:none;border-top:1px solid #d0d7de;">
+<p style="color:#57606a;font-size:12px;">此邮件由 GitHub Trending Daily 自动发送，请勿回复。</p>
+</body></html>"""
+    send_email("退订确认 — GitHub Trending Daily", html, receiver=email)
 
 
 @app.route("/api/history")
@@ -606,29 +805,6 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
         </div>
         <div id="customResult" style="margin-top:20px"></div>
     </div>
-    <div id="subscribeModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center">
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:30px;max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
-            <h3 style="margin:0 0 16px;color:var(--text)">📬 订阅每日推送</h3>
-            <p style="color:var(--text-dim);font-size:0.9em;margin-bottom:20px">选择你想要每天接收的日报类型，立即发送一封到你的邮箱：</p>
-            <div style="display:flex;gap:12px;margin-bottom:20px">
-                <label style="flex:1;display:flex;align-items:center;gap:8px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <input type="radio" name="subType" value="custom" checked style="accent-color:var(--accent)">
-                    <span style="color:var(--text);font-size:0.9em">🔧 自定义日报<br><small style="color:var(--text-dim)" id="subCustomTopic">当前话题</small></span>
-                </label>
-                <label style="flex:1;display:flex;align-items:center;gap:8px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-                    <input type="radio" name="subType" value="basic" style="accent-color:var(--accent)">
-                    <span style="color:var(--text);font-size:0.9em">📊 基础日报<br><small style="color:var(--text-dim)">6板块综合</small></span>
-                </label>
-            </div>
-            <input type="email" id="subEmail" placeholder="你的接收邮箱（如 xxx@qq.com）"
-                   style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95em;margin-bottom:16px;box-sizing:border-box">
-            <div style="display:flex;gap:8px;justify-content:flex-end">
-                <button onclick="closeSubscribeModal()" style="padding:8px 20px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-dim);cursor:pointer">取消</button>
-                <button onclick="confirmSubscribe()" style="padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer">立即订阅</button>
-            </div>
-            <div id="subMsg" style="margin-top:12px;font-size:0.85em;text-align:center"></div>
-        </div>
-    </div>
     """
 
     dashboard_placeholder = """
@@ -646,7 +822,8 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
         <h2 style="color:var(--text);margin-bottom:16px;">📬 订阅管理</h2>
         <div id="subList" style="margin-bottom:24px;">加载中...</div>
         <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;">
-            <h3 style="color:var(--text);margin-bottom:12px;font-size:1em;">退订</h3>
+            <h3 style="color:var(--text);margin-bottom:8px;font-size:1em;">退订</h3>
+            <p style="color:var(--text-dim);font-size:0.85em;margin:0 0 12px;">输入你的订阅邮箱即可取消每日推送</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <input type="email" id="unsubEmail" placeholder="输入要退订的邮箱"
                        style="flex:1;min-width:240px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);">
@@ -727,7 +904,7 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
             <div class="arch-tech-grid">
                 <div class="tech-card"><div class="tech-icon">🐍</div><div class="tech-name">Python + Flask</div><div class="tech-desc">Web 服务 / pipeline 编排</div></div>
                 <div class="tech-card"><div class="tech-icon">🔒</div><div class="tech-name">Fernet 加密</div><div class="tech-desc">AES-128-CBC + HMAC-SHA256</div></div>
-                <div class="tech-card"><div class="tech-icon">🤖</div><div class="tech-name">6 家 LLM 接入</div><div class="tech-desc">DeepSeek/OpenAI/Claude/通义/智谱/Kimi</div></div>
+                <div class="tech-card"><div class="tech-icon">🤖</div><div class="tech-name">6 家 LLM 接入</div><div class="tech-desc">DeepSeek/OpenAI/Claude 等 6 家</div></div>
                 <div class="tech-card"><div class="tech-icon">📊</div><div class="tech-name">SQLite + 6 维评分</div><div class="tech-desc">爆发度/质量/潜力/陷阱/AI 雷达</div></div>
                 <div class="tech-card"><div class="tech-icon">🌐</div><div class="tech-name">Cloudflare Tunnel</div><div class="tech-desc">本地服务公网暴露 + 自动恢复</div></div>
                 <div class="tech-card"><div class="tech-icon">⚡</div><div class="tech-name">GitHub Actions</div><div class="tech-desc">每日定时全自动 pipeline</div></div>
@@ -851,6 +1028,61 @@ body {{
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
+}}
+.top-brand-title {{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}}
+.top-brand-sub {{
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}}
+.basic-sub-banner {{
+    max-width: 1100px;
+    margin: 16px auto 20px;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, rgba(88,166,255,0.08), rgba(163,113,247,0.08));
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    text-align: center;
+}}
+.basic-sub-btn {{
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(90deg, var(--accent), var(--accent-purple));
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 600;
+    transition: transform 0.15s, box-shadow 0.15s;
+}}
+.basic-sub-btn:hover {{
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(88,166,255,0.3);
+}}
+@media (max-width: 640px) {{
+    .top-bar {{
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px 14px;
+    }}
+    .top-bar .actions {{
+        justify-content: flex-start;
+    }}
+    .tab-bar {{
+        padding: 8px 10px;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+    }}
 }}
 .tab-bar {{
     display: flex;
@@ -1697,7 +1929,7 @@ footer {{
 }}
 .arch-tech-grid {{
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
 }}
 .tech-card {{
@@ -1714,9 +1946,9 @@ footer {{
     transform: translateX(2px);
     border-color: var(--accent);
 }}
-.tech-icon {{ font-size: 1.5em; }}
-.tech-name {{ color: var(--text); font-weight: 600; font-size: 0.95em; }}
-.tech-desc {{ color: var(--text-dim); font-size: 0.78em; margin-top: 2px; }}
+.tech-icon {{ font-size: 1.5em; flex-shrink: 0; }}
+.tech-name {{ color: var(--text); font-weight: 600; font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.tech-desc {{ color: var(--text-dim); font-size: 0.78em; margin-top: 4px; word-break: keep-all; line-height: 1.4; }}
 .arch-security {{
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -1845,6 +2077,9 @@ footer {{
     .arch-step {{ max-width: 100%; }}
     .pipe-step {{ min-width: 90px; padding: 8px 6px; }}
     .pipe-name {{ font-size: 0.7em; }}
+    .arch-tech-grid {{ grid-template-columns: repeat(2, 1fr); }}
+}}
+@media (max-width: 560px) {{
     .arch-tech-grid {{ grid-template-columns: 1fr; }}
 }}
 
@@ -1940,11 +2175,11 @@ footer {{
 </head>
 <body>
 <div class="top-bar">
-    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
-        <span class="brand-icon" style="font-size:1.6em">🚀</span>
-        <div style="min-width:0">
-            <h1 style="font-size:1.4em;margin:0;color:var(--text);background:linear-gradient(90deg,var(--accent),var(--accent-purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700">GitHub Trending Daily</h1>
-            <span style="color:var(--text-dim);font-size:0.78em">🏆 TRAE AI 创造力大赛 · GitHub 热门项目智能日报系统</span>
+    <div style="display:flex;align-items:center;gap:12px;flex:1 1 240px;min-width:200px">
+        <span class="brand-icon" style="font-size:1.6em;flex-shrink:0">🚀</span>
+        <div style="min-width:0;flex:1">
+            <h1 class="top-brand-title" style="font-size:1.4em;margin:0;color:var(--text);background:linear-gradient(90deg,var(--accent),var(--accent-purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700">GitHub Trending Daily</h1>
+            <span class="top-brand-sub" style="color:var(--text-dim);font-size:0.78em">🏆 TRAE AI 创造力大赛 · GitHub 热门项目智能日报系统</span>
         </div>
     </div>
     <div class="actions">
@@ -1960,6 +2195,29 @@ footer {{
 <div id="toast" class="toast">刷新成功</div>
 <div id="content" class="content-area">
     {report_content}
+</div>
+<div id="subscribeModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center">
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:30px;max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
+        <h3 style="margin:0 0 16px;color:var(--text)">📬 订阅每日推送</h3>
+        <p style="color:var(--text-dim);font-size:0.9em;margin-bottom:20px">选择你想要每天接收的日报类型，立即发送一封到你的邮箱：</p>
+        <div style="display:flex;gap:12px;margin-bottom:20px">
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                <input type="radio" name="subType" value="custom" checked style="accent-color:var(--accent)">
+                <span style="color:var(--text);font-size:0.9em">🔧 自定义日报<br><small style="color:var(--text-dim)" id="subCustomTopic">当前话题</small></span>
+            </label>
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                <input type="radio" name="subType" value="basic" style="accent-color:var(--accent)">
+                <span style="color:var(--text);font-size:0.9em">📊 基础日报<br><small style="color:var(--text-dim)">6板块综合</small></span>
+            </label>
+        </div>
+        <input type="email" id="subEmail" placeholder="你的接收邮箱（如 xxx@qq.com）"
+               style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95em;margin-bottom:16px;box-sizing:border-box">
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button onclick="closeSubscribeModal()" style="padding:8px 20px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-dim);cursor:pointer">取消</button>
+            <button onclick="confirmSubscribe()" style="padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer">立即订阅</button>
+        </div>
+        <div id="subMsg" style="margin-top:12px;font-size:0.85em;text-align:center"></div>
+    </div>
 </div>
 
 <script>
@@ -1989,7 +2247,12 @@ function switchTab(mode) {{
         fetchWithTimeout('/api/daily')
             .then(r => r.json())
             .then(data => {{
-                document.getElementById('content').innerHTML = '<div class="fade-in">' + data.html + '</div>';
+                var subBanner = '<div class="basic-sub-banner">'
+                    + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">'
+                    + '<span style="color:var(--text);font-size:0.95em">📬 想每天自动收到这份日报？</span>'
+                    + '<button onclick="quickSubscribeBasic()" class="basic-sub-btn">订阅基础日报</button>'
+                    + '</div></div>';
+                document.getElementById('content').innerHTML = '<div class="fade-in">' + subBanner + data.html + '</div>';
                 document.getElementById('reportDate').textContent = '📅 ' + data.date;
                 hideSpinner();
             }})
@@ -2070,6 +2333,18 @@ function showSubscribeModal(topic) {{
     if (!modal) return;
     var topicSpan = document.getElementById('subCustomTopic');
     if (topicSpan) topicSpan.textContent = topic || '当前话题';
+    modal.style.display = 'flex';
+}}
+
+function quickSubscribeBasic() {{
+    var modal = document.getElementById('subscribeModal');
+    if (!modal) return;
+    var basicRadio = document.querySelector('input[name="subType"][value="basic"]');
+    var customRadio = document.querySelector('input[name="subType"][value="custom"]');
+    if (basicRadio) basicRadio.checked = true;
+    if (customRadio) customRadio.checked = false;
+    var topicSpan = document.getElementById('subCustomTopic');
+    if (topicSpan) topicSpan.textContent = '6板块综合日报';
     modal.style.display = 'flex';
 }}
 
@@ -2251,25 +2526,33 @@ function loadSubscriptions() {{
         .then(r => r.json())
         .then(data => {{
             var subs = data.subscriptions || [];
-            var html = '<h3 style="color:var(--text);margin-bottom:12px;font-size:1em;">当前订阅 (' + subs.length + ')</h3>';
-            if (subs.length === 0) {{
-                html += '<p style="color:var(--text-dim);text-align:center;padding:20px;">暂无订阅</p>';
-            }} else {{
-                subs.forEach(function(s) {{
-                    var typeClass = s.type === 'custom' ? 'custom' : 'basic';
-                    var typeLabel = s.type === 'custom' ? '🔧 自定义' : '📊 基础';
-                    html += '<div class="sub-item fade-in">';
-                    html += '<div class="sub-info">';
-                    html += '<span class="sub-type ' + typeClass + '">' + typeLabel + '</span>';
-                    html += '<span style="color:var(--text);">' + s.email + '</span>';
-                    if (s.topic) {{
-                        html += '<span style="color:var(--text-dim);font-size:0.8em;">话题: ' + s.topic + '</span>';
-                    }}
-                    html += '</div>';
-                    html += '<span style="color:var(--text-dim);font-size:0.75em;">' + (s.updated_at || '') + '</span>';
-                    html += '</div>';
-                }});
-            }}
+            var totalCount = subs.length;
+            var basicCount = subs.filter(function(s) {{ return s.type !== 'custom'; }}).length;
+            var customCount = subs.filter(function(s) {{ return s.type === 'custom'; }}).length;
+            var hasKeyCount = subs.filter(function(s) {{ return s.has_api_key; }}).length;
+
+            var html = '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px 20px;">';
+            html += '<div style="display:flex;align-items:center;justify-content:center;gap:32px;flex-wrap:wrap;margin-bottom:18px;">';
+            html += '<div style="text-align:center;min-width:100px;">';
+            html += '<div style="font-size:2.6em;font-weight:700;color:var(--accent);line-height:1;">' + totalCount + '</div>';
+            html += '<div style="color:var(--text-dim);font-size:0.85em;margin-top:6px;">总订阅人数</div>';
+            html += '</div>';
+            html += '<div style="width:1px;height:50px;background:var(--border);"></div>';
+            html += '<div style="text-align:center;min-width:90px;">';
+            html += '<div style="font-size:1.6em;font-weight:600;color:var(--accent-green);line-height:1;">' + basicCount + '</div>';
+            html += '<div style="color:var(--text-dim);font-size:0.8em;margin-top:6px;">📊 基础日报</div>';
+            html += '</div>';
+            html += '<div style="text-align:center;min-width:90px;">';
+            html += '<div style="font-size:1.6em;font-weight:600;color:var(--accent-purple);line-height:1;">' + customCount + '</div>';
+            html += '<div style="color:var(--text-dim);font-size:0.8em;margin-top:6px;">🔧 自定义话题</div>';
+            html += '</div>';
+            html += '<div style="text-align:center;min-width:90px;">';
+            html += '<div style="font-size:1.6em;font-weight:600;color:var(--accent-orange);line-height:1;">' + hasKeyCount + '</div>';
+            html += '<div style="color:var(--text-dim);font-size:0.8em;margin-top:6px;">🔑 自带 Key</div>';
+            html += '</div>';
+            html += '</div>';
+            html += '<p style="color:var(--text-dim);font-size:0.8em;text-align:center;margin:0;">🔒 为保护订阅者隐私，仅显示统计人数，不展示订阅者列表。如需退订请在下方输入邮箱。</p>';
+            html += '</div>';
             document.getElementById('subList').innerHTML = html;
         }})
         .catch(e => {{
@@ -2315,8 +2598,15 @@ function loadTunnelCard() {{
                 'unknown': {{text: '⚪ 未知', cls: 'unknown'}}
             }};
             var s = statusMap[data.uptime_status] || statusMap['unknown'];
-            var urlDisplay = data.current_url ? data.current_url : '未配置隧道';
-            var urlHref = data.current_url || '#';
+            // 前端转义 tunnel URL，防止属性注入 XSS
+            function escAttr(s) {{
+                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+            }}
+            function escHtml(s) {{
+                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            }}
+            var urlDisplay = data.current_url ? escHtml(data.current_url) : '未配置隧道';
+            var urlHref = data.current_url ? escAttr(data.current_url) : '#';
             var runTag = data.monitor_running ? '<span style="color:var(--accent-green);font-size:0.8em">● 守护运行中</span>' : '<span style="color:var(--text-dim);font-size:0.8em">○ 守护休眠</span>';
             card.style.display = 'block';
             card.innerHTML = '<div class="tunnel-card-head"><span class="tunnel-card-title">📡 URL 健康监控守护</span>' + runTag + '</div>'
@@ -2401,9 +2691,13 @@ function loadTunnelStatus() {{
 
 
 def run_web(host: str = "0.0.0.0", port: int = 5000, debug: bool = False):
-    """启动 Web 服务（0.0.0.0 允许局域网访问）"""
+    """启动 Web 服务（0.0.0.0 允许局域网访问）
+
+    使用 threaded=True 防止单个慢请求（如 /api/custom 60s）阻塞整站。
+    生产环境建议改用 gunicorn（Dockerfile 已配置 --threads 4）。
+    """
     logger.info(f"Starting web server on http://{host}:{port}")
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, threaded=True)
 
 
 if __name__ == "__main__":

@@ -140,6 +140,95 @@ TOPIC_LABEL = {
     "gis": "地理信息",
     "bim": "BIM建筑",
     "structural": "结构工程",
+    # ── 补充：安全/加密 ──
+    "cryptography": "密码学",
+    "encryption": "加密",
+    "ssl": "SSL/TLS",
+    "tls": "SSL/TLS",
+    "crypto": "加密",
+    "password": "密码管理",
+    "hash": "哈希算法",
+    "pki": "公钥基础设施",
+    "certificate": "证书管理",
+    # ── 补充：网络/协议 ──
+    "networking": "网络",
+    "network": "网络",
+    "http": "HTTP",
+    "websocket": "WebSocket",
+    "proxy": "代理",
+    "load-balancer": "负载均衡",
+    "dns": "DNS",
+    # ── 补充：基础设施 ──
+    "library": "基础库",
+    "runtime": "运行时",
+    "kernel": "内核",
+    "operating-system": "操作系统",
+    "linux": "Linux",
+    "virtual-machine": "虚拟机",
+    # ── 补充：数据存储 ──
+    "sql": "SQL数据库",
+    "nosql": "NoSQL数据库",
+    "redis": "Redis",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "sqlite": "SQLite",
+    "mongodb": "MongoDB",
+    "elasticsearch": "Elasticsearch",
+    "kafka": "Kafka",
+    "rabbitmq": "RabbitMQ",
+    "message-queue": "消息队列",
+    # ── 补充：CI/CD ──
+    "github-actions": "GitHub Actions",
+    "gitlab-ci": "GitLab CI",
+    "automation": "自动化",
+    # ── 补充：前端生态 ──
+    "javascript": "JavaScript",
+    "angular": "Angular",
+    "svelte": "Svelte",
+    "webpack": "Webpack",
+    "vite": "Vite",
+    "tailwind": "Tailwind CSS",
+    "css": "CSS",
+    # ── 补充：语言 ──
+    "java": "Java",
+    "c": "C语言",
+    "cpp": "C++",
+    "c-plus-plus": "C++",
+    "csharp": "C#",
+    "kotlin": "Kotlin",
+    "swift": "Swift",
+    "ruby": "Ruby",
+    "php": "PHP",
+    # ── 补充：工具链 ──
+    "vscode": "VS Code",
+    "neovim": "Neovim",
+    "vim": "Vim",
+    "shell": "Shell",
+    "bash": "Bash",
+    "zsh": "Zsh",
+    "command-line": "命令行",
+    # ── 补充：其他高频 ──
+    "bot": "机器人",
+    "chatbot": "聊天机器人",
+    "plugin": "插件",
+    "extension": "扩展",
+    "parser": "解析器",
+    "compiler": "编译器",
+    "editor": "编辑器",
+    "notes": "笔记",
+    "markdown": "Markdown",
+    "database": "数据库",
+    "framework": "框架",
+    "cli": "命令行工具",
+    "api": "API",
+    "sdk": "SDK",
+    "docker": "Docker",
+    "kubernetes": "Kubernetes",
+    "terraform": "Terraform",
+    "ansible": "Ansible",
+    "monitoring": "监控",
+    "logging": "日志",
+    "testing": "测试",
 }
 
 # ── 项目名 → 领域描述模式 ──────────────────────────────
@@ -188,7 +277,7 @@ def _pick_cn_topics(repo: dict, max_n: int = 5) -> list[str]:
 
     for t in topics:
         key = t.lower().replace("_", "-").replace(" ", "-")
-        label = TOPIC_LABEL.get(key)
+        label = TOPIC_LABEL.get(key, key)  # 未命中时回退为原始 topic（不再丢弃）
         if label and label not in seen:
             result.append(label)
             seen.add(label)
@@ -289,16 +378,29 @@ def generate_cn_detail(repo: dict) -> str:
 
     sentences = []
 
-    # ── 第 1 句：项目定位 ───────────────────────────────
+    # ── 第 1 句：项目定位（句式池，避免千篇一律）──
     topic_str = "、".join(cn_topics[:3]) if cn_topics else ""
-    if topic_str:
-        first = f"这是一个{topic_str}领域的开源项目"
-        if type_hint:
-            first += f"，属于{type_hint}"
+    if topic_str and type_hint:
+        first = f"定位为{topic_str}方向的{type_hint}"
+    elif topic_str:
+        if stars >= 50000:
+            first = f"{topic_str}领域的头部开源项目"
+        elif stars >= 10000:
+            first = f"{topic_str}方向备受关注的开源项目"
+        else:
+            first = f"{topic_str}领域的开源项目"
     elif type_hint:
-        first = f"这是一个{type_hint}"
+        first = f"一个{type_hint}"
     else:
-        first = f"这是一个GitHub热门开源项目"
+        # 全空 — 基于 stars 差异化
+        if stars >= 50000:
+            first = "GitHub 上广受关注的头部开源项目"
+        elif stars >= 10000:
+            first = "社区热度较高的开源项目"
+        elif stars_today >= 500:
+            first = "近期星标快速增长的开源项目"
+        else:
+            first = "GitHub 上的开源项目"
 
     if language and language != "Unknown":
         first += f"，使用 {language} 开发"
@@ -426,9 +528,19 @@ def generate_cn_intro_with_readme(repo: dict, readme_text: str = "") -> str:
     sections = []
 
     # ── 🚀 一句话定位 ──────────────────────────────────
-    topic_str = "、".join(cn_topics[:3]) if cn_topics else "通用"
-    loc = f"🚀 **一句话定位**：{full_name} 是一个{topic_str}领域的开源项目"
-    if type_hint:
+    topic_str = "、".join(cn_topics[:3]) if cn_topics else ""
+    if topic_str:
+        if stars >= 50000:
+            loc = f"🚀 **一句话定位**：{full_name} 是{topic_str}领域的头部开源项目"
+        elif stars >= 10000:
+            loc = f"🚀 **一句话定位**：{full_name} 是{topic_str}方向备受关注的开源项目"
+        else:
+            loc = f"🚀 **一句话定位**：{full_name} 是{topic_str}领域的开源项目"
+    elif type_hint:
+        loc = f"🚀 **一句话定位**：{full_name} 定位为{type_hint}"
+    else:
+        loc = f"🚀 **一句话定位**：{full_name} 是一个GitHub开源项目"
+    if type_hint and topic_str:
         loc += f"，属于{type_hint}"
     if desc and _is_mostly_chinese(desc):
         loc += f"——{desc[:80]}"
@@ -559,9 +671,6 @@ def _infer_pain_points(repo: dict, readme: str = "") -> str:
         pain.append("优化电力系统管理和能源转换效率")
 
     if not pain:
-        # 从描述推断
-        if repo.get("description"):
-            return f"解决 {repo['description'][:100]} 等实际问题"
         return ""
 
     return "；".join(pain[:3])
@@ -584,44 +693,54 @@ def _topic_match(keyword: str, topics: list[str], desc: str) -> bool:
 
 
 def _infer_user_profile(repo: dict) -> str:
-    """推断典型用户群体"""
+    """推断典型用户群体（支持多标签组合，不再首次命中即返回）"""
     topics = [t.lower() for t in repo.get("topics", [])]
     desc = (repo.get("description", "") or "").lower()
+    language = (repo.get("language") or "").lower()
+    stars = repo.get("stars") or 0
 
-    if any(_topic_match(k, topics, desc) for k in ("agent", "claude", "llm", "ai")):
-        return "AI 开发者和 Agent 构建者"
-    if any(_topic_match(k, topics, desc) for k in ("react", "vue", "frontend", "ui", "figma")):
-        return "前端开发者和 UI 设计师"
-    if any(_topic_match(k, topics, desc) for k in ("rust", "cargo", "systems")):
-        return "系统编程和 Rust 生态开发者"
-    if any(_topic_match(k, topics, desc) for k in ("python", "data", "ml")):
-        return "数据科学家和 Python 开发者"
-    if any(_topic_match(k, topics, desc) for k in ("kubernetes", "docker", "devops")):
-        return "DevOps 和云原生工程师"
-    if any(_topic_match(k, topics, desc) for k in ("mobile", "ios", "android", "flutter")):
-        return "移动端开发者和跨平台团队"
-    if any(_topic_match(k, topics, desc) for k in ("security", "osint", "hacking")):
-        return "安全研究人员和白帽黑客"
-    if any(_topic_match(k, topics, desc) for k in ("game", "engine", "3d")):
-        return "游戏开发者和图形工程师"
-    if any(_topic_match(k, topics, desc) for k in ("finance", "trading", "quant")):
-        return "量化交易和金融科技从业者"
-    if any(_topic_match(k, topics, desc) for k in ("esp32", "esp8266", "stm32", "arduino", "microcontroller", "embedded", "firmware", "rtos", "freertos")):
-        return "嵌入式开发者和固件工程师"
-    if any(_topic_match(k, topics, desc) for k in ("iot", "mqtt", "smart-home", "home-automation", "lorawan")):
-        return "物联网开发者和智能家居集成商"
-    if any(_topic_match(k, topics, desc) for k in ("pcb", "kicad", "circuit", "hardware-design", "eda", "schematic")):
-        return "硬件工程师和电路设计者"
-    if any(_topic_match(k, topics, desc) for k in ("fpga", "verilog", "vhdl")):
-        return "FPGA 开发者和数字电路设计者"
-    if any(_topic_match(k, topics, desc) for k in ("dsp", "signal-processing", "adc", "dac")):
-        return "信号处理工程师和算法开发者"
-    if any(_topic_match(k, topics, desc) for k in ("robotics", "ros", "ros2", "robot")):
-        return "机器人开发者和自动化工程师"
-    if any(_topic_match(k, topics, desc) for k in ("plc", "scada", "modbus", "industrial-automation")):
-        return "工业控制和自动化工程师"
-    if any(_topic_match(k, topics, desc) for k in ("power-system", "power-electronics", "battery", "solar", "inverter", "grid")):
-        return "电力系统工程师和能源管理从业者"
+    # 标签 → 画像映射（按优先级排列，支持组合最多 2 个）
+    PROFILE_MAP = [
+        (("agent", "claude-code", "mcp", "orchestrat"), "AI Agent 构建者"),
+        (("llm", "gpt", "openai", "deepseek", "claude", "mistral"), "大模型应用开发者"),
+        (("ai", "machine-learning", "ml"), "AI 应用开发者"),
+        (("react", "vue", "frontend", "ui", "figma", "tailwind"), "前端开发者和 UI 设计师"),
+        (("rust", "cargo", "wasm"), "Rust 系统开发者"),
+        (("python", "pandas", "numpy", "jupyter"), "数据科学家和 Python 开发者"),
+        (("kubernetes", "docker", "devops", "terraform"), "DevOps 和云原生工程师"),
+        (("mobile", "ios", "android", "flutter", "kotlin", "swift"), "移动端开发者"),
+        (("security", "osint", "hacking", "pentest", "infosec"), "安全研究人员"),
+        (("game", "game-engine", "godot", "unity"), "游戏开发者"),
+        (("finance", "trading", "quant", "backtest"), "量化交易从业者"),
+        (("esp32", "stm32", "arduino", "embedded", "firmware", "rtos"), "嵌入式开发者"),
+        (("iot", "mqtt", "smart-home", "lorawan"), "物联网开发者"),
+        (("pcb", "kicad", "circuit", "hardware-design"), "硬件工程师"),
+        (("fpga", "verilog", "vhdl"), "FPGA 开发者"),
+        (("dsp", "signal-processing", "fft"), "信号处理工程师"),
+        (("robotics", "ros", "robot"), "机器人开发者"),
+        (("plc", "scada", "modbus"), "工业控制工程师"),
+        (("power-system", "battery", "solar", "inverter"), "电力系统工程师"),
+        (("database", "sql", "postgres", "mysql", "redis"), "数据库开发者和 DBA"),
+        (("blockchain", "web3", "ethereum", "solidity"), "区块链开发者"),
+        (("video", "ffmpeg", "video-processing"), "视频处理开发者"),
+    ]
+
+    profiles = []
+    for keywords, label in PROFILE_MAP:
+        if any(_topic_match(k, topics, desc) for k in keywords):
+            if label not in profiles:
+                profiles.append(label)
+        if len(profiles) >= 2:  # 最多组合 2 个标签
+            break
+
+    if profiles:
+        return "、".join(profiles)
+
+    # 兜底：基于 language/stars 差异化
+    if language and language != "unknown":
+        return f"使用 {language} 的开发者"
+    if stars >= 10000:
+        return "关注开源热点的大众开发者"
     return "关注技术前沿的开发者"
 
 
@@ -875,6 +994,7 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
     name = repo.get("name", "").lower()
     language = repo.get("language") or "Unknown"
     desc = (repo.get("description") or "").strip()
+    stars = repo.get("stars") or 0
     stars_today = repo.get("stars_in_period") or 0
     quality = repo.get("quality_score", 0)
     topics = repo.get("topics", [])
@@ -893,11 +1013,16 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
             type_hint = hint
             break
 
-    topic_str = "、".join(cn_topics[:3]) if cn_topics else "通用"
+    topic_str = "、".join(cn_topics[:3]) if cn_topics else ""
 
     # ── 维度1：定位 ──
-    loc_parts = [f"{topic_str}领域"]
-    if type_hint:
+    if topic_str:
+        loc_parts = [f"{topic_str}领域"]
+    elif type_hint:
+        loc_parts = [f"定位为{type_hint}"]
+    else:
+        loc_parts = [f"使用{language}开发" if language and language != "Unknown" else "GitHub开源项目"]
+    if type_hint and topic_str:
         loc_parts.append(f"属于{type_hint}")
     if language and language != "Unknown":
         loc_parts.append(f"使用{language}开发")
@@ -910,7 +1035,7 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
     pain = _infer_pain_points(repo, readme)
     value_parts = []
     if pain:
-        value_parts.append(f"解决{pain}")
+        value_parts.append(pain)
     if stars_today >= 1000:
         value_parts.append(f"今日新增{stars_today:,}星，增速突出")
     if quality >= 0.5:
@@ -932,7 +1057,12 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
     if last_push is not None and last_push <= 7:
         tech_parts.append("维护非常活跃")
     if not tech_parts:
-        tech_parts.append(f"以{language}为主的技术栈")
+        if language and language != "Unknown":
+            tech_parts.append(f"以{language}为主的技术栈")
+        elif topics:
+            tech_parts.append(f"涉及{topic_str}等技术方向")
+        else:
+            tech_parts.append("技术栈信息待补充")
     tech_highlight = _clean_dim_text("，".join(tech_parts))
 
     # ── 维度4：用户画像 ──
@@ -941,10 +1071,26 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
     # ── 维度5：使用场景 ──
     use_cases = _infer_use_cases(repo, readme)
     if not use_cases:
-        use_cases = f"适合关注{topic_str}的开发者使用"
+        if topic_str:
+            use_cases = f"关注{topic_str}方向的开发者可参考使用"
+        elif language and language != "Unknown":
+            use_cases = f"使用{language}的开发者可按需集成"
+        else:
+            use_cases = "开发者可按需参考使用"
     use_cases = _clean_dim_text(use_cases)
 
     # ── 维度6：健康度 ──
+    # updated_days 兜底：从 repo.updated_at 解析（extra_api 无 token 时 _extra 为空）
+    if updated_days < 0:
+        updated_at = repo.get("updated_at")
+        if updated_at:
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                updated_days = (datetime.now(timezone.utc) - dt).days
+            except Exception:
+                pass
+
     health_parts = []
     if updated_days >= 0:
         if updated_days <= 7:
@@ -955,7 +1101,7 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
             health_parts.append(f"低频更新（{updated_days}天前更新）")
         else:
             health_parts.append(f"长期未更新（{updated_days}天前）")
-    elif last_push is not None:
+    elif last_push is not None and last_push > 0:  # 增加 > 0 检查，防止默认值 0 误报
         if last_push <= 7:
             health_parts.append("近期有推送，维护活跃")
         elif last_push <= 30:
@@ -967,7 +1113,13 @@ def _build_rule_dimensions(repo: dict, readme: str) -> list[dict]:
     if releases:
         health_parts.append(f"{releases}个版本")
     if not health_parts:
-        health_parts.append("数据待补充")
+        # 兜底：结合 stars 给出有用信息
+        if stars >= 10000:
+            health_parts.append(f"基于{stars:,} Star的社区关注度")
+        elif stars >= 1000:
+            health_parts.append(f"{stars:,} Star，社区有一定关注度")
+        else:
+            health_parts.append("数据待补充")
     health = _clean_dim_text("·".join(health_parts))
 
     return [

@@ -2,6 +2,7 @@
 QQ 邮箱推送
 使用 SMTP SSL 方式发送
 """
+import html
 import logging
 import re
 import smtplib
@@ -170,7 +171,9 @@ def _inline_md(text: str) -> str:
         url = m.group(2).strip()
         # 仅允许 http/https/mailto 协议
         if re.match(r'^https?://|^mailto:', url, re.IGNORECASE):
-            return f'<a href="{url}" style="color:#0969da;">{link_text}</a>'
+            # 对 URL 中的引号转义，防止属性注入
+            safe_url = html.escape(url, quote=True)
+            return f'<a href="{safe_url}" style="color:#0969da;">{link_text}</a>'
         # 不安全协议，仅显示文本
         return link_text
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _safe_link, text)

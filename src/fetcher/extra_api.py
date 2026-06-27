@@ -57,8 +57,10 @@ def fetch_repo_extra(owner: str, name: str) -> dict:
         "releases": 0,
         "last_release_days": None,
         "commits_12w": 0,
-        "created_days": 0,
-        "last_push_days": 0,
+        # 默认 None 而非 0：区分"未获取到"与"刚推送/新建"
+        # 防止 API 失败时被误判为满分维护活跃度 / 90 天内新建
+        "created_days": None,
+        "last_push_days": None,
     }
 
     # 1. 仓库基本信息（不需要 Token）
