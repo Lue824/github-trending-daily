@@ -9,6 +9,7 @@ data/.secret_key
 data/cache.db
 data/trending.db
 data/subscription.json
+data/reports/*.md
 data/logs/
 current_url.txt
 data/.last_tunnel_url
