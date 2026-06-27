@@ -909,7 +909,7 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
                 <div class="tech-card"><div class="tech-icon">🌐</div><div class="tech-name">Cloudflare Tunnel</div><div class="tech-desc">本地服务公网暴露 + 自动恢复</div></div>
                 <div class="tech-card"><div class="tech-icon">⚡</div><div class="tech-name">GitHub Actions</div><div class="tech-desc">每日定时全自动 pipeline</div></div>
                 <div class="tech-card"><div class="tech-icon">📡</div><div class="tech-name">URL 监控守护</div><div class="tech-desc">健康检查 + 自动重建 + 告警</div></div>
-                <div class="tech-card"><div class="tech-icon">📧</div><div class="tech-name">QQ 邮箱推送</div><div class="tech-desc">每日报告自动邮件分发</div></div>
+                <div class="tech-card"><div class="tech-icon">📧</div><div class="tech-name">SMTP 邮件推送</div><div class="tech-desc">每日报告自动邮件分发</div></div>
             </div>
         </section>
 

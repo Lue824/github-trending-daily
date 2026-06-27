@@ -59,8 +59,8 @@ FOCUS_KEYWORDS = {
 EMAIL_CONFIG = {
     "smtp_host": "smtp.qq.com",
     "smtp_port": 465,
-    "sender": os.getenv("QQ_EMAIL", ""),          # 你的 QQ 邮箱
-    "password": os.getenv("QQ_EMAIL_AUTH_CODE", ""),  # QQ 邮箱授权码
+    "sender": os.getenv("QQ_EMAIL", ""),          # 发件邮箱（任意 SMTP 邮箱）
+    "password": os.getenv("QQ_EMAIL_AUTH_CODE", ""),  # 邮箱授权码
     "receiver": os.getenv("RECEIVER_EMAIL", ""),
 }
 

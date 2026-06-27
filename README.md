@@ -31,7 +31,7 @@ pinned: false
 ### 📧 订阅与推送
 - 基础日报 / 自定义话题订阅
 - 邮件加密存储（Fernet）+ 退订 token 校验（防 IDOR）
-- QQ 邮箱 SMTP 推送
+- SMTP 邮件推送（兼容任意邮箱服务商）
 - tunnel URL 变更自动通知
 
 ### 🛡️ 安全与可靠性
@@ -70,9 +70,9 @@ cp .env.example .env
 GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 
 # 邮件推送（订阅功能必填）
-QQ_EMAIL=your_qq@qq.com
+QQ_EMAIL=your_email@example.com
 QQ_EMAIL_AUTH_CODE=xxxxxxxxxxxx
-RECEIVER_EMAIL=your_qq@qq.com
+RECEIVER_EMAIL=your_email@example.com
 
 # LLM 深度分析（可选）
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx
@@ -152,7 +152,7 @@ GitHub_Trending_Projects_Summary/
 │   ├── storage/
 │   │   └── db.py                 #   SQLite 持久化（WAL）
 │   ├── notifier/
-│   │   ├── email_sender.py       #   QQ 邮箱 SMTP 推送
+│   │   ├── email_sender.py       #   SMTP 邮件推送
 │   │   ├── url_monitor.py        #   Cloudflare Tunnel 监控守护
 │   │   └── notify_url_change.py  #   tunnel URL 变更通知
 │   ├── utils/
@@ -205,7 +205,7 @@ GitHub_Trending_Projects_Summary/
 - **数据**：SQLite（WAL）、GitHub REST API v3、Search API
 - **LLM**：DeepSeek / OpenAI / Anthropic / 通义千问 / 智谱 / Moonshot
 - **部署**：Docker、Hugging Face Spaces、GitHub Actions、Cloudflare Tunnel
-- **邮件**：QQ 邮箱 SMTP SSL
+- **邮件**：SMTP SSL（兼容任意邮箱服务商）
 - **加密**：cryptography Fernet（AES-128-CBC + HMAC-SHA256）
 
 ## 安全说明

@@ -1,5 +1,5 @@
 """
-QQ 邮箱推送
+SMTP 邮件推送
 使用 SMTP SSL 方式发送
 """
 import html
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def send_email(subject: str, html_content: str, receiver: str = None) -> bool:
     """
-    通过 QQ 邮箱 SMTP 发送邮件
+    通过 SMTP 发送邮件
 
     Args:
         subject: 邮件主题
@@ -32,7 +32,7 @@ def send_email(subject: str, html_content: str, receiver: str = None) -> bool:
     receiver = (receiver or EMAIL_CONFIG.get("receiver") or "").strip()
 
     if not sender or not password:
-        logger.error("QQ email config missing: set QQ_EMAIL and QQ_EMAIL_AUTH_CODE in .env")
+        logger.error("Email config missing: set QQ_EMAIL and QQ_EMAIL_AUTH_CODE in .env")
         return False
 
     if not receiver:
