@@ -1041,6 +1041,7 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
   line-height: 1.6;
 }
 .dino-game-wrap {
+  position: relative;
   margin: 12px 0;
   padding: 10px;
   background: #0a0e14;
@@ -1102,6 +1103,39 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
   font-size: 0.88em;
 }
 .dino-cancel:hover { border-color: #f85149; color: #f85149; }
+.dino-start-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 38px;
+  background: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.05em;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(88, 166, 255, 0.5), 0 0 0 2px rgba(255,255,255,0.1) inset;
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+  z-index: 10;
+  letter-spacing: 1px;
+  animation: dinoBtnPulse 2s ease-in-out infinite;
+}
+.dino-start-btn:hover {
+  transform: translate(-50%, -50%) scale(1.06);
+  box-shadow: 0 10px 32px rgba(88, 166, 255, 0.7), 0 0 0 2px rgba(255,255,255,0.2) inset;
+}
+.dino-start-btn.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.8);
+  animation: none;
+}
+@keyframes dinoBtnPulse {
+  0%, 100% { box-shadow: 0 6px 24px rgba(88, 166, 255, 0.5), 0 0 0 2px rgba(255,255,255,0.1) inset; }
+  50% { box-shadow: 0 6px 32px rgba(163, 113, 247, 0.7), 0 0 0 2px rgba(255,255,255,0.2) inset; }
+}
 </style>
 
 <div id="dinoFallback">
@@ -1111,6 +1145,7 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
     <p class="dino-sub" id="dinoSubTitle">请求已发出，后端仍在处理（可能涉及 LLM 调用或多轮解析）</p>
     <div class="dino-game-wrap">
       <canvas id="dinoCanvas" width="580" height="170"></canvas>
+      <button id="dinoStartBtn" class="dino-start-btn">▶ 开始游戏</button>
       <div class="dino-hint">
         按 <kbd>空格</kbd> 或 <kbd>↑</kbd> 跳跃 · 避开仙人掌 · 分数<span class="dino-score" id="dinoScore">0</span> · 最高<span class="dino-score" id="dinoBest">0</span>
       </div>
@@ -1139,8 +1174,8 @@ function showDinoFallback(reason) {
   // 启动 / 恢复恐龙游戏
   if (!_dinoGameInst) {
     _dinoGameInst = new DinoGameSoft();
-    _dinoGameInst.start();
-  } else {
+    // 不自动 start，等用户点击「开始游戏」按钮
+  } else if (_dinoGameInst.started) {
     _dinoGameInst.resume();
   }
   // 启动已等待时间计时
@@ -1167,7 +1202,7 @@ class DinoGameSoft {
     this.W = this.canvas.width;
     this.H = this.canvas.height;
     this.groundY = this.H - 28;
-    this.dino = { x: 50, y: this.groundY - 28, w: 22, h: 28, vy: 0, jumping: false };
+    this.dino = { x: 50, y: this.groundY - 30, w: 28, h: 30, vy: 0, jumping: false };
     this.gravity = 0.7;
     this.jumpV = -10.5;
     this.cacti = [];
@@ -1181,19 +1216,41 @@ class DinoGameSoft {
     this.cloudTimer = 0;
     this.running = false;
     this.gameOver = false;
+    this.started = false;       // 是否已点击开始按钮
+    this.runFrame = 0;           // 跑步动画帧计数
+    this.blinkTimer = 0;        // 眨眼计时器
+    this.blinking = false;
     this.bindKeys();
+    this.bindStartBtn();
+    // 初始绘制一帧静态恐龙（按钮显示时）
+    this.draw();
+  }
+  bindStartBtn() {
+    var self = this;
+    var btn = document.getElementById('dinoStartBtn');
+    if (btn) {
+      btn.addEventListener('click', function() {
+        self.started = true;
+        btn.classList.add('hidden');
+        self.reset();
+        self.start();
+      });
+    }
   }
   bindKeys() {
     var self = this;
     this._keyHandler = function(e) {
       if (e.code === 'Space' || e.code === 'ArrowUp') {
         e.preventDefault();
+        // 未点击开始按钮时，键盘空格不响应
+        if (!self.started) return;
         if (self.gameOver) { self.reset(); self.start(); return; }
         if (!self.dino.jumping) { self.dino.vy = self.jumpV; self.dino.jumping = true; }
       }
     };
     document.addEventListener('keydown', this._keyHandler);
     this._touchHandler = function() {
+      if (!self.started) return;
       if (self.gameOver) { self.reset(); self.start(); return; }
       if (!self.dino.jumping) { self.dino.vy = self.jumpV; self.dino.jumping = true; }
     };
@@ -1213,6 +1270,7 @@ class DinoGameSoft {
     this.gameOver = false;
     this.spawnTimer = 0;
     this.cloudTimer = 0;
+    this.runFrame = 0;
     // 清除自动重启定时器（防止手动按空格重启 + 自动重启双重触发）
     if (this._autoRestartTimer) {
       clearInterval(this._autoRestartTimer);
@@ -1223,7 +1281,7 @@ class DinoGameSoft {
   }
   start() { this.running = true; this.loop(); }
   pause() { this.running = false; }
-  resume() { if (!this.running) { this.running = true; this.loop(); } }
+  resume() { if (!this.running && this.started) { this.running = true; this.loop(); } }
   loop() {
     if (!this.running) return;
     this.update();
@@ -1241,6 +1299,19 @@ class DinoGameSoft {
       this.dino.y = this.groundY - this.dino.h;
       this.dino.vy = 0;
       this.dino.jumping = false;
+    }
+    // 跑步动画帧（每 6 帧切换一次腿部姿势）
+    if (!this.dino.jumping) {
+      this.runFrame++;
+    }
+    // 眨眼计时
+    this.blinkTimer++;
+    if (this.blinkTimer > 180) {  // 约 3 秒眨一次
+      this.blinking = true;
+      if (this.blinkTimer > 186) {  // 眨眼持续 6 帧
+        this.blinking = false;
+        this.blinkTimer = 0;
+      }
     }
     this.spawnTimer--;
     if (this.spawnTimer <= 0) {
@@ -1261,8 +1332,8 @@ class DinoGameSoft {
     this.clouds = this.clouds.filter(function(c) { return c.x + c.w > 0; });
     for (var k = 0; k < this.cacti.length; k++) {
       var c = this.cacti[k];
-      if (this.dino.x < c.x + c.w && this.dino.x + this.dino.w > c.x &&
-          this.dino.y < c.y + c.h && this.dino.y + this.dino.h > c.y) {
+      if (this.dino.x + 4 < c.x + c.w && this.dino.x + this.dino.w - 4 > c.x &&
+          this.dino.y + 4 < c.y + c.h && this.dino.y + this.dino.h > c.y) {
         this.endGame();
         return;
       }
@@ -1299,6 +1370,97 @@ class DinoGameSoft {
       }
     }, 1000);
   }
+  // ── 改进的恐龙像素艺术绘制 ──
+  // 参数：state = { jumping, dead, blinking, runFrame }
+  drawDino(ctx, x, y, state) {
+    var bodyColor = state.dead ? '#6e7681' : '#58a6ff';
+    var detailColor = state.dead ? '#8b949e' : '#388bfd';
+    var bellyColor = state.dead ? '#484f58' : '#a371f7';
+    var eyeWhite = '#ffffff';
+    var pupilColor = state.dead ? '#f85149' : '#0d1117';
+
+    // ── 尾巴 ──
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(x - 6, y + 10, 6, 4);
+    ctx.fillRect(x - 10, y + 12, 4, 3);
+
+    // ── 身体 ──
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(x + 2, y + 8, 18, 14);          // 身体主体
+    ctx.fillStyle = bellyColor;
+    ctx.fillRect(x + 4, y + 14, 14, 6);           // 腹部（紫色肚子）
+    ctx.fillStyle = detailColor;
+    ctx.fillRect(x + 4, y + 9, 14, 1);            // 背部条纹
+    ctx.fillRect(x + 8, y + 9, 2, 2);             // 背鳞
+
+    // ── 头部 ──
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(x + 14, y - 2, 14, 12);          // 头主体
+    ctx.fillRect(x + 26, y + 2, 4, 5);            // 嘴部突出
+    ctx.fillRect(x + 12, y, 4, 4);                // 后脑
+
+    // ── 眼睛 ──
+    if (state.dead) {
+      // X 眼（死亡）
+      ctx.fillStyle = '#f85149';
+      ctx.fillRect(x + 22, y + 2, 1, 1);
+      ctx.fillRect(x + 24, y + 2, 1, 1);
+      ctx.fillRect(x + 23, y + 3, 1, 1);
+      ctx.fillRect(x + 22, y + 4, 1, 1);
+      ctx.fillRect(x + 24, y + 4, 1, 1);
+    } else if (state.blinking) {
+      // 闭眼（眨眼）
+      ctx.fillStyle = detailColor;
+      ctx.fillRect(x + 21, y + 3, 5, 1);
+    } else {
+      // 正常睁眼
+      ctx.fillStyle = eyeWhite;
+      ctx.fillRect(x + 21, y + 2, 5, 3);
+      ctx.fillStyle = pupilColor;
+      ctx.fillRect(x + 23, y + 3, 2, 2);
+    }
+
+    // ── 嘴巴 ──
+    ctx.fillStyle = state.dead ? '#f85149' : '#0d1117';
+    if (state.dead) {
+      // 死亡张嘴
+      ctx.fillRect(x + 24, y + 6, 4, 2);
+    } else {
+      // 正常闭嘴
+      ctx.fillRect(x + 24, y + 7, 4, 1);
+    }
+
+    // ── 腿部（动画核心）──
+    ctx.fillStyle = bodyColor;
+    if (state.jumping) {
+      // 跳跃：双腿伸直向下
+      ctx.fillRect(x + 4, y + 22, 4, 7);
+      ctx.fillRect(x + 14, y + 22, 4, 7);
+      // 跳跃时尾巴翘起
+      ctx.fillStyle = detailColor;
+      ctx.fillRect(x - 10, y + 9, 4, 3);
+    } else if (state.dead) {
+      // 死亡：腿趴下
+      ctx.fillRect(x + 4, y + 22, 4, 3);
+      ctx.fillRect(x + 14, y + 22, 4, 3);
+    } else {
+      // 跑步：双腿交替（每 6 帧切换）
+      var step = Math.floor(state.runFrame / 6) % 2;
+      if (step === 0) {
+        ctx.fillRect(x + 4, y + 22, 4, 8);        // 左腿前伸
+        ctx.fillRect(x + 14, y + 22, 4, 5);      // 右腿收起
+      } else {
+        ctx.fillRect(x + 4, y + 22, 4, 5);       // 左腿收起
+        ctx.fillRect(x + 14, y + 22, 4, 8);       // 右腿前伸
+      }
+    }
+
+    // ── 手臂 ──
+    ctx.fillStyle = detailColor;
+    if (!state.dead) {
+      ctx.fillRect(x + 16, y + 12, 3, 4);        // 小前爪
+    }
+  }
   draw() {
     var ctx = this.ctx;
     ctx.fillStyle = '#0a0e14';
@@ -1325,22 +1487,33 @@ class DinoGameSoft {
       ctx.fillRect(cl.x + 6, cl.y - 4, cl.w - 12, 4);
       ctx.fillRect(cl.x + 12, cl.y, cl.w - 24, 4);
     }
-    // 仙人掌
-    ctx.fillStyle = '#3fb950';
+    // 仙人掌（改进造型）
     for (var j = 0; j < this.cacti.length; j++) {
       var ca = this.cacti[j];
+      ctx.fillStyle = '#3fb950';
       ctx.fillRect(ca.x, ca.y, ca.w, ca.h);
-      ctx.fillRect(ca.x - 4, ca.y + 6, 4, 8);
-      ctx.fillRect(ca.x + ca.w, ca.y + 8, 4, 6);
+      // 仙人掌侧枝
+      ctx.fillRect(ca.x - 4, ca.y + 4, 4, 8);
+      ctx.fillRect(ca.x + ca.w, ca.y + 6, 4, 6);
+      // 顶部小花
+      ctx.fillStyle = '#f85149';
+      ctx.fillRect(ca.x + Math.floor(ca.w / 2), ca.y - 2, 3, 3);
     }
-    // 恐龙
-    ctx.fillStyle = '#58a6ff';
+    // 恐龙（改进造型 + 动画）
     var d = this.dino;
-    ctx.fillRect(d.x, d.y, 12, 20);
-    ctx.fillRect(d.x + 12, d.y - 6, 10, 12);
-    ctx.fillRect(d.x + 18, d.y - 4, 4, 2);
-    ctx.fillRect(d.x + 2, d.y + 20, 4, 8);
-    ctx.fillRect(d.x + 10, d.y + 20, 4, 8);
+    var state = {
+      jumping: d.jumping,
+      dead: this.gameOver,
+      blinking: this.blinking,
+      runFrame: this.runFrame
+    };
+    this.drawDino(ctx, d.x, d.y, state);
+
+    // 未开始时的提示
+    if (!this.started && !this.gameOver) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(0, 0, this.W, this.H);
+    }
     // GAME OVER
     if (this.gameOver) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
