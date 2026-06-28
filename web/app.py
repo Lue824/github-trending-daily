@@ -1604,6 +1604,10 @@ body::after {{
 @keyframes radarScan {{
     to {{ transform: translate(-50%, -50%) rotate(360deg); }}
 }}
+body > *:not(#mouse-glow) {{
+    position: relative;
+    z-index: 1;
+}}
 .top-bar {{
     position: relative;
     z-index: 10;
