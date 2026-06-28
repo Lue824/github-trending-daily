@@ -1745,6 +1745,31 @@ body {{
     opacity: 0.6;
 }}
 .dimensions:not(.collapse) .dim-toggle {{ transform: rotate(180deg); }}
+.empty-state {{
+    text-align: center;
+    padding: 60px 20px;
+}}
+.empty-state .empty-icon {{
+    font-size: 3em;
+    margin-bottom: 16px;
+    opacity: 0.6;
+}}
+.empty-state .empty-title {{
+    font-size: 1.2em;
+    color: var(--text);
+    margin-bottom: 8px;
+}}
+.empty-state .empty-desc {{
+    color: var(--text-dim);
+    font-size: 0.9em;
+    margin-bottom: 20px;
+}}
+.empty-state .empty-hint {{
+    color: var(--text-dim);
+    font-size: 0.8em;
+    margin-top: 12px;
+    opacity: 0.7;
+}}
 .btn {{
     padding: 6px 14px;
     border-radius: 6px;
@@ -2943,8 +2968,18 @@ function switchTab(mode) {{
                 hideSpinner();
             }})
             .catch(e => {{
-                var msg = isTimeoutError(e) ? '请求超时，请稍后重试' : '加载失败，请检查网络';
-                document.getElementById('content').innerHTML = '<p style="color:#f85149;text-align:center;padding:40px">' + msg + '</p>';
+                var isTimeout = isTimeoutError(e);
+                var icon = isTimeout ? '⏳' : '⚠️';
+                var title = isTimeout ? '请求超时' : '加载失败';
+                var desc = isTimeout ? '后端正在生成日报或调用 LLM，请稍后重试' : '可能是网络中断或服务未启动';
+                document.getElementById('content').innerHTML =
+                    '<div class="empty-state fade-in">' +
+                    '<div class="empty-icon">' + icon + '</div>' +
+                    '<div class="empty-title">' + title + '</div>' +
+                    '<div class="empty-desc">' + desc + '</div>' +
+                    '<button onclick="switchTab(\'basic\')" class="btn btn-primary">🔄 重试</button>' +
+                    '<div class="empty-hint">或等待定时任务自动生成（每日 8:00）</div>' +
+                    '</div>';
                 hideSpinner();
             }});
     }} else if (mode === 'custom') {{
@@ -3002,7 +3037,7 @@ function submitCustom() {{
         }} else {{
             msg = '生成失败: ' + e;
         }}
-        resultDiv.innerHTML = '<p style="color:#f85149;text-align:center;padding:30px">' + msg + '</p>';
+        resultDiv.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-icon">🔍</div><div class="empty-title">' + msg + '</div><div class="empty-desc">换个关键词试试，或检查 API Key 是否正确</div></div>';
     }});
 }}
 
@@ -3139,7 +3174,14 @@ document.addEventListener('DOMContentLoaded', function() {{
         }})
         .catch(function(e) {{
             var msg = isTimeoutError(e) ? '请求超时，请稍后重试' : '数据加载中，请稍候或点击刷新按钮重试...';
-            document.getElementById('content').innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px">' + msg + '</p>';
+            document.getElementById('content').innerHTML =
+                '<div class="empty-state fade-in">' +
+                '<div class="empty-icon">📭</div>' +
+                '<div class="empty-title">暂无日报数据</div>' +
+                '<div class="empty-desc">' + msg + '</div>' +
+                '<button onclick="refreshData()" class="btn btn-primary">🔄 立即刷新</button>' +
+                '<div class="empty-hint">或等待定时任务自动生成（每日 8:00）</div>' +
+                '</div>';
             hideSpinner();
         }});
 }});
