@@ -1770,6 +1770,28 @@ body {{
     margin-top: 12px;
     opacity: 0.7;
 }}
+.skeleton-card {{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+}}
+.skeleton-line {{
+    height: 12px;
+    background: linear-gradient(90deg, var(--border) 0%, var(--bg-elevated) 50%, var(--border) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}}
+.skeleton-line.short {{ width: 40%; }}
+.skeleton-line.medium {{ width: 70%; }}
+.skeleton-line.long {{ width: 100%; }}
+@keyframes shimmer {{
+    0% {{ background-position: 200% 0; }}
+    100% {{ background-position: -200% 0; }}
+}}
 .btn {{
     padding: 6px 14px;
     border-radius: 6px;
@@ -3145,7 +3167,18 @@ function refreshData() {{
 
 function showSpinner() {{
     document.getElementById('spinner').classList.add('show');
-    document.getElementById('content').style.opacity = '0.3';
+    var content = document.getElementById('content');
+    content.style.opacity = '1';
+    var cards = '';
+    for (var i = 0; i < 5; i++) {{
+        cards += '<div class="skeleton-card">'
+            + '<div class="skeleton-line medium"></div>'
+            + '<div class="skeleton-line long"></div>'
+            + '<div class="skeleton-line long"></div>'
+            + '<div class="skeleton-line short"></div>'
+            + '</div>';
+    }}
+    content.innerHTML = '<div class="fade-in">' + cards + '</div>';
 }}
 function hideSpinner() {{
     document.getElementById('spinner').classList.remove('show');
