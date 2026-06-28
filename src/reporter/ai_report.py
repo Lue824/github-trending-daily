@@ -202,7 +202,7 @@ def generate_ai_report(focus_repos: list[dict], sections: dict, date_str: str,
 <p>{lang_html}</p>
 </div>
 
-<footer>📬 AI 深度报告由 GitHub Trending Daily Bot 自动生成 — {now.strftime('%Y-%m-%d %H:%M')} UTC</footer>
+<footer>📬 AI 深度报告由 GitRadar Bot 自动生成 — {now.strftime('%Y-%m-%d %H:%M')} UTC</footer>
 </div>"""
 
 

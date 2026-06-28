@@ -115,7 +115,7 @@ def _build_email_html(new_url: str, old_url: str = "", reason: str = "") -> str:
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;color:#1f2328;max-width:600px;margin:0 auto;padding:30px 20px;background:#fff;">
 <div style="background:#f6f8fa;border-radius:10px;padding:24px;margin-bottom:20px;">
 <h1 style="margin:0 0 16px;font-size:20px;color:#0969da;">🔔 公网地址已更新</h1>
-<p style="margin:0 0 12px;color:#656d76;">GitHub Trending Daily 服务的公网访问地址已更换，请使用以下新地址：</p>
+<p style="margin:0 0 12px;color:#656d76;">GitRadar 服务的公网访问地址已更换，请使用以下新地址：</p>
 <p style="margin:0 0 16px;">
 <a href="{new_url}" style="display:inline-block;padding:12px 24px;background:#0969da;color:#fff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:bold;">{new_url}</a>
 </p>
@@ -130,7 +130,7 @@ def _build_email_html(new_url: str, old_url: str = "", reason: str = "") -> str:
 <p>📌 新地址在服务重启前保持有效；若再次更换，我们会另行通知。</p>
 <p>📌 你订阅的每日 GitHub Trending 推送不受影响，会按计划发送到你的邮箱。</p>
 <hr style="border:0;border-top:1px solid #d0d7de;margin:16px 0;">
-<p style="margin:0;">此邮件由 GitHub Trending Daily Bot 自动发送，请勿回复。</p>
+<p style="margin:0;">此邮件由 GitRadar Bot 自动发送，请勿回复。</p>
 </div>
 </body>
 </html>"""
@@ -173,7 +173,7 @@ def notify_url_change(new_url: str, old_url: str = "", reason: str = "") -> int:
     if old_url:
         logger.info(f"  Old URL: {old_url} (reason: {reason})")
 
-    subject = "🔔 GitHub Trending Daily 公网地址已更新"
+    subject = "🔔 GitRadar 公网地址已更新"
     html = _build_email_html(new_url, old_url=old_url, reason=reason)
 
     sent = 0

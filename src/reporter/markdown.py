@@ -75,7 +75,7 @@ def generate_monthly_report(stats: dict, year: int, month: int) -> str:
 
     lines.append("---")
     lines.append("")
-    lines.append("*📬 本报告由 GitHub Trending Daily Bot 自动生成*")
+    lines.append("*📬 本报告由 GitRadar Bot 自动生成*")
     lines.append("")
 
     return "\n".join(lines)

@@ -620,9 +620,9 @@ def _send_unsubscribe_confirmation(email: str, subs: list):
 {"".join(links_html)}
 <p style="color:#57606a;font-size:13px;margin-top:20px;">如果您没有发起退订请求，请忽略此邮件。链接有效，他人无法仅凭邮箱退订您的订阅。</p>
 <hr style="margin:24px 0;border:none;border-top:1px solid #d0d7de;">
-<p style="color:#57606a;font-size:12px;">此邮件由 GitHub Trending Daily 自动发送，请勿回复。</p>
+<p style="color:#57606a;font-size:12px;">此邮件由 GitRadar 自动发送，请勿回复。</p>
 </body></html>"""
-    send_email("退订确认 — GitHub Trending Daily", html, receiver=email)
+    send_email("退订确认 — GitRadar", html, receiver=email)
 
 
 @app.route("/api/history")
@@ -839,8 +839,8 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
         <!-- Hero 简介 -->
         <section class="arch-hero">
             <div class="arch-hero-tag">🏆 TRAE AI 创造力大赛参赛作品</div>
-            <h2 class="arch-hero-title">GitHub Trending Daily</h2>
-            <p class="arch-hero-subtitle">基于 TRAE IDE 全程开发的 GitHub 热门项目智能日报系统</p>
+            <h2 class="arch-hero-title">GitRadar</h2>
+            <p class="arch-hero-subtitle">基于 TRAE IDE 全程开发的 GitRadar · GitHub 开源项目雷达</p>
             <div class="arch-hero-stats">
                 <div class="hero-stat"><span class="num" id="archStatRepos">—</span><span class="lbl">已索引项目</span></div>
                 <div class="hero-stat"><span class="num" id="archStatReports">—</span><span class="lbl">累计报告</span></div>
@@ -1541,14 +1541,20 @@ class DinoGameSoft {
 :root {{
     --bg: #0d1117;
     --bg-card: #161b22;
+    --bg-elevated: #1c2333;
     --border: #30363d;
     --text: #c9d1d9;
     --text-dim: #8b949e;
     --accent: #58a6ff;
+    --accent-cyan: #39d0d8;
     --accent-green: #3fb950;
     --accent-orange: #d2991d;
     --accent-purple: #a371f7;
     --accent-red: #f85149;
+    --accent-glow: rgba(88, 166, 255, 0.4);
+    --gradient-brand: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%);
+    --gradient-radar: linear-gradient(90deg, #39d0d8, #58a6ff);
+    --shadow-glow: 0 0 20px rgba(88, 166, 255, 0.3);
 }}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
@@ -2715,19 +2721,85 @@ footer {{
     from {{ opacity: 0; transform: translateY(8px); }}
     to {{ opacity: 1; transform: translateY(0); }}
 }}
+.radar-sweep {{
+    transform-origin: 19px 19px;
+    animation: radarSweep 3s linear infinite;
+}}
+@keyframes radarSweep {{
+    from {{ transform: rotate(0deg); }}
+    to {{ transform: rotate(360deg); }}
+}}
+.scan-pulse {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: rgba(63, 185, 80, 0.1);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    font-size: 0.75em;
+    color: var(--accent-green);
+}}
+.scan-pulse::before {{
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: scanPulse 1.6s ease-in-out infinite;
+}}
+@keyframes scanPulse {{
+    0%, 100% {{ opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.6); }}
+    50% {{ opacity: 0.7; transform: scale(1.2); box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }}
+}}
+.tab {{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}}
+.tab:hover {{
+    box-shadow: 0 2px 0 0 var(--accent);
+}}
+.tab.active {{
+    background: var(--gradient-brand);
+    box-shadow: var(--shadow-glow);
+}}
 </style>
 </head>
 <body>
 <div class="top-bar">
     <div style="display:flex;align-items:center;gap:12px;flex:1 1 240px;min-width:200px">
-        <span class="brand-icon" style="font-size:1.6em;flex-shrink:0">🚀</span>
+        <div style="position:relative;width:38px;height:38px;flex-shrink:0">
+            <svg width="38" height="38" viewBox="0 0 38 38" fill="none" style="position:absolute;top:0;left:0">
+                <circle cx="19" cy="19" r="17" stroke="#58a6ff" stroke-width="1" opacity="0.2"/>
+                <circle cx="19" cy="19" r="13" stroke="#58a6ff" stroke-width="1" opacity="0.3"/>
+                <circle cx="19" cy="19" r="9" stroke="#58a6ff" stroke-width="1" opacity="0.5"/>
+                <line x1="19" y1="2" x2="19" y2="36" stroke="#30363d" stroke-width="0.5"/>
+                <line x1="2" y1="19" x2="36" y2="19" stroke="#30363d" stroke-width="0.5"/>
+                <circle cx="26" cy="12" r="1.5" fill="#3fb950"/>
+                <circle cx="12" cy="25" r="1.5" fill="#a371f7"/>
+                <circle cx="25" cy="26" r="1" fill="#d2991d"/>
+                <circle cx="19" cy="19" r="2.5" fill="#58a6ff"/>
+                <g class="radar-sweep">
+                    <path d="M19 19 L19 2 A17 17 0 0 1 30 8 Z" fill="url(#scanGrad)" opacity="0.5"/>
+                </g>
+                <defs>
+                    <linearGradient id="scanGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#39d0d8" stop-opacity="0.6"/>
+                        <stop offset="100%" stop-color="#39d0d8" stop-opacity="0"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
         <div style="min-width:0;flex:1">
-            <h1 class="top-brand-title" style="font-size:1.4em;margin:0;color:var(--text);background:linear-gradient(90deg,var(--accent),var(--accent-purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700">GitHub Trending Daily</h1>
-            <span class="top-brand-sub" style="color:var(--text-dim);font-size:0.78em">🏆 TRAE AI 创造力大赛 · GitHub 热门项目智能日报系统</span>
+            <h1 class="top-brand-title" style="font-size:1.4em;margin:0;color:var(--text);background:linear-gradient(90deg,var(--accent),var(--accent-purple));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700">GitRadar</h1>
+            <span class="top-brand-sub" style="color:var(--text-dim);font-size:0.78em">🏆 TRAE AI 创造力大赛 · GitRadar · GitHub 开源项目雷达</span>
         </div>
     </div>
     <div class="actions">
         <span id="reportDate" style="color:var(--text-dim);font-size:0.85em"></span>
+        <span class="scan-pulse">实时扫描中</span>
         <button class="btn" onclick="switchTab('arch')" style="background:var(--bg-card);border:1px solid var(--accent-purple);color:var(--accent-purple)">🏗️ 架构</button>
         <button class="btn btn-primary" onclick="refreshData()">🔄 刷新数据</button>
     </div>

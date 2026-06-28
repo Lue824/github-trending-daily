@@ -1,4 +1,4 @@
-# Render Blueprint — GitHub Trending Daily
+# Render Blueprint — GitRadar
 # 部署指南: https://render.com/docs/blueprints
 services:
   - type: web

@@ -490,7 +490,7 @@ def _send_critical_alert(old_url: str, reason: str, cfg: dict):
 <body style="font-family:sans-serif;font-size:15px;color:#1f2328;max-width:600px;margin:0 auto;padding:30px 20px;">
 <div style="background:#fff5f5;border:1px solid #f85149;border-radius:10px;padding:24px;margin-bottom:20px;">
 <h1 style="margin:0 0 16px;font-size:20px;color:#f85149;">[严重告警] URL 恢复失败</h1>
-<p style="margin:0 0 12px;color:#656d76;">GitHub Trending Daily 服务的 tunnel URL 恢复流程已耗尽所有重试次数，仍然失败。</p>
+<p style="margin:0 0 12px;color:#656d76;">GitRadar 服务的 tunnel URL 恢复流程已耗尽所有重试次数，仍然失败。</p>
 <table style="width:100%;font-size:14px;border-collapse:collapse;">
 <tr><td style="padding:4px 12px;color:#656d76;border-bottom:1px solid #eee;">故障 URL</td><td style="padding:4px 12px;border-bottom:1px solid #eee;">{old_url}</td></tr>
 <tr><td style="padding:4px 12px;color:#656d76;border-bottom:1px solid #eee;">失败原因</td><td style="padding:4px 12px;border-bottom:1px solid #eee;">{reason}</td></tr>

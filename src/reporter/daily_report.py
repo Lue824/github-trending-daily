@@ -342,7 +342,7 @@ def generate_6section_report(
 
     dashboard_parts.append('</section>')
 
-    footer = f'''<footer>📬 本报告由 GitHub Trending Daily Bot 自动生成 — {now.strftime("%Y-%m-%d %H:%M")} UTC</footer>
+    footer = f'''<footer>📬 本报告由 GitRadar Bot 自动生成 — {now.strftime("%Y-%m-%d %H:%M")} UTC</footer>
 </div>'''
 
     return header + "".join(sections_html) + "".join(dashboard_parts) + footer

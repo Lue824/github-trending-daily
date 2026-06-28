@@ -515,7 +515,7 @@ def generate_custom_report(
 
 {"".join(sections_html)}
 
-<footer>📬 自定义报告由 GitHub Trending Daily Bot 生成{footer_note}</footer>
+<footer>📬 自定义报告由 GitRadar Bot 生成{footer_note}</footer>
 </div>"""
 
 

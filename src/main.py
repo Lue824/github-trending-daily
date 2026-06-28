@@ -1,5 +1,5 @@
 """
-GitHub Trending Daily — 主入口
+GitRadar — 主入口
 编排数据抓取 → 处理 → 存储 → 报告 → 推送全流程
 
 支持三种运行模式：
