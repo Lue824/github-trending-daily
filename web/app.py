@@ -1559,11 +1559,54 @@ class DinoGameSoft {
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    background: var(--bg);
+    background: 
+        radial-gradient(ellipse at 20% 0%, #1a1f3a 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, #0d1f1a 0%, transparent 50%),
+        linear-gradient(180deg, #0a0e1a 0%, var(--bg) 100%);
+    background-attachment: fixed;
     color: var(--text);
     min-height: 100vh;
+    position: relative;
+}}
+body::before {{
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+        linear-gradient(rgba(88,166,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(88,166,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+}}
+#mouse-glow {{
+    position: fixed;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(88,166,255,0.08) 0%, transparent 60%);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    transition: opacity 0.3s;
+    opacity: 0;
+}}
+body::after {{
+    content: '';
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 200vmax; height: 200vmax;
+    background: conic-gradient(from 0deg, transparent 0%, rgba(88,166,255,0.025) 2%, transparent 5%);
+    transform: translate(-50%, -50%);
+    animation: radarScan 10s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}}
+@keyframes radarScan {{
+    to {{ transform: translate(-50%, -50%) rotate(360deg); }}
 }}
 .top-bar {{
+    position: relative;
+    z-index: 10;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 12px 20px;
@@ -1685,15 +1728,38 @@ body {{
 .content-area .repo-card,
 .content-area .custom-card,
 .content-area .section-card {{
-    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    transition: border-color 0.25s, box-shadow 0.25s;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: transform 0.25s ease, border-color 0.25s, box-shadow 0.25s;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+}}
+.content-area .repo-card::before,
+.content-area .custom-card::before,
+.content-area .section-card::before {{
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--gradient-brand);
+    opacity: 0;
+    transition: opacity 0.25s;
+}}
+.content-area .repo-card:hover::before,
+.content-area .custom-card:hover::before,
+.content-area .section-card:hover::before {{
+    opacity: 1;
 }}
 .content-area .repo-card:hover,
 .content-area .custom-card:hover,
 .content-area .section-card:hover {{
-    border-color: var(--accent);
-    box-shadow: 0 0 20px rgba(88, 166, 255, 0.15);
+    transform: translateY(-4px);
+    border-color: rgba(88, 166, 255, 0.3);
+    box-shadow: 0 8px 30px rgba(88, 166, 255, 0.2), 0 0 20px rgba(88, 166, 255, 0.15);
 }}
 .spinner {{
     display: none;
@@ -1804,11 +1870,18 @@ body {{
 }}
 .btn:hover {{ border-color: var(--accent); }}
 .btn-primary {{
-    background: var(--accent);
+    background: linear-gradient(135deg, #39d0d8, #58a6ff);
     color: #fff;
-    border-color: var(--accent);
+    border-color: transparent;
+    text-shadow: 0 0 12px rgba(57, 208, 216, 0.6);
+    box-shadow: 0 0 20px rgba(88, 166, 255, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
 }}
-.btn-primary:hover {{ opacity: 0.9; }}
+.btn-primary:hover {{
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(88, 166, 255, 0.5), 0 0 30px rgba(57, 208, 216, 0.3);
+    opacity: 1;
+}}
 
 /* === 自定义日报样式 === */
 .custom-container {{ max-width: 1100px; margin: 0 auto; }}
@@ -1993,15 +2066,18 @@ body {{
 .custom-card .repo-name {{
     color: var(--accent);
     text-decoration: none;
-    font-weight: 600;
-    font-size: 1em;
+    font-weight: 800;
+    font-size: 1.15em;
+    letter-spacing: -0.01em;
 }}
 .custom-card .repo-name:hover {{ text-decoration: underline; }}
 .custom-card .repo-desc {{
     color: var(--text);
     font-size: 0.88em;
-    line-height: 1.5;
+    line-height: 1.6;
     margin-bottom: 10px;
+    opacity: 0.7;
+    font-weight: 400;
 }}
 .custom-card .repo-stats {{
     display: flex;
@@ -2863,6 +2939,7 @@ footer {{
 </style>
 </head>
 <body>
+<div id="mouse-glow"></div>
 <div class="top-bar">
     <div style="display:flex;align-items:center;gap:12px;flex:1 1 240px;min-width:200px">
         <div style="position:relative;width:38px;height:38px;flex-shrink:0">
@@ -3192,6 +3269,19 @@ function showToast() {{
 function toggleDims(el) {{
     el.parentElement.classList.toggle('collapse');
 }}
+// 鼠标跟随光晕
+document.addEventListener('mousemove', function(e) {{
+    var glow = document.getElementById('mouse-glow');
+    if (glow) {{
+        glow.style.left = e.clientX + 'px';
+        glow.style.top = e.clientY + 'px';
+        glow.style.opacity = '1';
+    }}
+}});
+document.addEventListener('mouseleave', function() {{
+    var glow = document.getElementById('mouse-glow');
+    if (glow) glow.style.opacity = '0';
+}});
 
 // 初始化 — 自动加载数据
 document.addEventListener('DOMContentLoaded', function() {{
