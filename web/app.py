@@ -1213,6 +1213,11 @@ class DinoGameSoft {
     this.gameOver = false;
     this.spawnTimer = 0;
     this.cloudTimer = 0;
+    // 清除自动重启定时器（防止手动按空格重启 + 自动重启双重触发）
+    if (this._autoRestartTimer) {
+      clearInterval(this._autoRestartTimer);
+      this._autoRestartTimer = null;
+    }
     var scEl = document.getElementById('dinoScore');
     if (scEl) scEl.textContent = '0';
   }
@@ -1276,6 +1281,23 @@ class DinoGameSoft {
       var bestEl = document.getElementById('dinoBest');
       if (bestEl) bestEl.textContent = this.best;
     }
+    // 死亡后 2 秒自动重开
+    var self = this;
+    if (this._autoRestartTimer) clearTimeout(this._autoRestartTimer);
+    this._autoRestartSec = 2;
+    var secEl = document.getElementById('dinoScore');
+    var origText = secEl ? secEl.textContent : '';
+    this._autoRestartTimer = setInterval(function() {
+      self._autoRestartSec--;
+      if (self._autoRestartSec <= 0) {
+        clearInterval(self._autoRestartTimer);
+        self._autoRestartTimer = null;
+        self.reset();
+        self.start();
+      } else if (secEl) {
+        secEl.textContent = origText + ' · ' + self._autoRestartSec + 's 后重开';
+      }
+    }, 1000);
   }
   draw() {
     var ctx = this.ctx;
@@ -1329,7 +1351,7 @@ class DinoGameSoft {
       ctx.fillText('GAME OVER', this.W / 2, this.H / 2 - 10);
       ctx.fillStyle = '#c9d1d9';
       ctx.font = '13px Consolas, monospace';
-      ctx.fillText('按 空格 / 点击 重新开始', this.W / 2, this.H / 2 + 16);
+      ctx.fillText('2 秒后自动重开（或按 空格 / 点击 立即开始）', this.W / 2, this.H / 2 + 16);
     }
   }
 }
