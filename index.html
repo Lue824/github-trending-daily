@@ -650,6 +650,7 @@ class DinoGame {
 }
 
 // ─── 主入口：加载 redirect.json → 探活 → 跳转/失效态 ───
+(async function main() {
   document.getElementById('spinner').style.display = 'block';
   setStatus('正在获取最新访问地址...');
   try {
