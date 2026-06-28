@@ -17,6 +17,7 @@ from config import REPORTS_DIR
 from src.processor.describe_cn import generate_dimensions
 from src.processor.categorize import classify_repos, compute_hot_score
 from src.processor.scoring import compute_all_scores
+from src.reporter.daily_report import _build_radar_chart
 from src.utils.html_safe import esc, safe_href, safe_text_br, safe_url_path
 
 logger = logging.getLogger(__name__)
@@ -226,12 +227,15 @@ def _card(repo: dict, idx: int, api_key: str = "", provider: str = "") -> str:
     else:
         health_progress_html = ""
 
+    radar_html = _build_radar_chart(repo, extra)
+
     return f'''<div class="repo-card custom-card">
 <div class="repo-header">
 <span class="repo-rank">#{idx}</span>
 <a href="{safe_url}" target="_blank" class="repo-name">{safe_name}</a>
 {source_tag}
 </div>
+{radar_html}
 <div class="repo-desc">{desc_html}</div>
 {stats_html}
 {scores_html}

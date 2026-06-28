@@ -10,6 +10,7 @@
 ⑥ 数据看板 — 统计摘要
 """
 import os
+import math
 from collections import Counter
 from datetime import datetime
 
@@ -17,6 +18,55 @@ from config import REPORTS_DIR
 from src.processor.describe_cn import generate_dimensions, generate_cn_description
 from src.reporter._shared import rank_badge, section_anchor_id
 from src.utils.html_safe import esc, safe_href, safe_text_br
+
+
+def _build_radar_chart(repo: dict, extra: dict = None) -> str:
+    """生成六边形雷达图 SVG — 6 维评分可视化"""
+    extra = extra or {}
+    cx, cy, r = 40, 40, 32
+    labels = ["爆发", "质量", "AI", "人气", "活跃", "健康"]
+    raw = [
+        repo.get("burst_score", 0) / 2,
+        min(repo.get("quality_score", 0), 1),
+        repo.get("ai_radar_score", 0) / 100,
+        min(math.log10(repo.get("stars", 1) + 1) / 5, 1),
+        max(0, 1 - extra.get("updated_days", 30) / 30),
+        min(extra.get("contributors", 1) / 50, 1),
+    ]
+    values = [max(0, min(v, 1)) for v in raw]
+    pts = []
+    for i, v in enumerate(values):
+        ang = -math.pi / 2 + i * math.pi / 3
+        pts.append(f"{cx + r * v * math.cos(ang):.1f},{cy + r * v * math.sin(ang):.1f}")
+    grids = []
+    for layer in (0.25, 0.5, 0.75, 1.0):
+        gp = []
+        for i in range(6):
+            ang = -math.pi / 2 + i * math.pi / 3
+            gp.append(f"{cx + r * layer * math.cos(ang):.1f},{cy + r * layer * math.sin(ang):.1f}")
+        grids.append(" ".join(gp))
+    axes = []
+    for i in range(6):
+        ang = -math.pi / 2 + i * math.pi / 3
+        axes.append(f'<line x1="{cx}" y1="{cy}" x2="{cx + r * math.cos(ang):.1f}" y2="{cy + r * math.sin(ang):.1f}" stroke="#30363d" stroke-width="0.5"/>')
+    label_tags = []
+    for i, lb in enumerate(labels):
+        ang = -math.pi / 2 + i * math.pi / 3
+        lx = cx + (r + 6) * math.cos(ang)
+        ly = cy + (r + 6) * math.sin(ang)
+        label_tags.append(f'<text x="{lx:.1f}" y="{ly:.1f}" fill="#8b949e" font-size="6" text-anchor="middle" dominant-baseline="middle">{lb}</text>')
+    return (
+        f'<svg width="80" height="80" viewBox="0 0 80 80" class="radar-chart" style="float:right;margin:-8px 0 0 8px">'
+        f'<polygon points="{grids[3]}" fill="none" stroke="#30363d" stroke-width="0.5" opacity="0.4"/>'
+        f'<polygon points="{grids[2]}" fill="none" stroke="#30363d" stroke-width="0.5" opacity="0.4"/>'
+        f'<polygon points="{grids[1]}" fill="none" stroke="#30363d" stroke-width="0.5" opacity="0.4"/>'
+        f'<polygon points="{grids[0]}" fill="none" stroke="#30363d" stroke-width="0.5" opacity="0.4"/>'
+        f'{"".join(axes)}'
+        f'<polygon points="{" ".join(pts)}" fill="rgba(88,166,255,0.2)" stroke="#58a6ff" stroke-width="1.5"/>'
+        f'{"".join(label_tags)}'
+        f'<circle cx="{cx}" cy="{cy}" r="1.5" fill="#58a6ff"/>'
+        f'</svg>'
+    )
 
 
 def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
@@ -182,6 +232,7 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
 
     safe_url = safe_href(repo.get("url", ""))
     safe_name = esc(repo.get("full_name", ""))
+    radar_html = _build_radar_chart(repo, extra)
 
     return f'''<div id="{anchor}" class="repo-card custom-card {card_type_class}">
 <div class="repo-header">
@@ -189,6 +240,7 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
 <a href="{safe_url}" target="_blank" class="repo-name">{safe_name}</a>
 {trap_html} {badge_html}
 </div>
+{radar_html}
 <div class="repo-desc">{desc_html}</div>
 {dimensions_html}
 {stats_html}
