@@ -237,9 +237,11 @@ def _card(repo: dict, idx: int, api_key: str = "", provider: str = "") -> str:
 {scores_html}
 {tags_html}
 {health_progress_html}
-<div class="dimensions">
-<div class="dim-title">🔍 多维度解读</div>
+<div class="dimensions collapse">
+<div class="dim-title" onclick="toggleDims(this)">🔍 多维度解读 <span class="dim-toggle">▼</span></div>
+<div class="dim-body">
 {dims_html}
+</div>
 </div>
 </div>'''
 

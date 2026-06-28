@@ -64,9 +64,9 @@ def _repo_card(repo: dict, idx: int, section: str, yesterday_ranks: dict,
     dimensions_html = ""
     if dims:
         dimensions_html = (
-            '<div class="dimensions">'
-            '<div class="dim-title">🔍 多维度解读</div>'
-            f'{dims_html}'
+            '<div class="dimensions collapse">'
+            '<div class="dim-title" onclick="toggleDims(this)">🔍 多维度解读 <span class="dim-toggle">▼</span></div>'
+            f'<div class="dim-body">{dims_html}</div>'
             '</div>'
         )
 

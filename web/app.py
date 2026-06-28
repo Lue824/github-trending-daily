@@ -1729,6 +1729,22 @@ body {{
     z-index: 999;
 }}
 .toast.show {{ opacity: 1; }}
+.dimensions {{ margin-top: 8px; }}
+.dimensions.collapse .dim-body {{ display: none; }}
+.dimensions .dim-title {{
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+    transition: color 0.2s;
+}}
+.dimensions .dim-title:hover {{ color: var(--accent); }}
+.dimensions .dim-toggle {{
+    float: right;
+    transition: transform 0.2s;
+    font-size: 0.8em;
+    opacity: 0.6;
+}}
+.dimensions:not(.collapse) .dim-toggle {{ transform: rotate(180deg); }}
 .btn {{
     padding: 6px 14px;
     border-radius: 6px;
@@ -3104,6 +3120,9 @@ function showToast() {{
     const t = document.getElementById('toast');
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2000);
+}}
+function toggleDims(el) {{
+    el.parentElement.classList.toggle('collapse');
 }}
 
 // 初始化 — 自动加载数据
