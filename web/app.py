@@ -987,6 +987,352 @@ def _render_index(mode: str = "basic", report_content: str = "") -> str:
     </div>
     """
 
+    # 恐龙游戏 overlay（普通字符串，避免 f-string 双花括号转义问题）
+    # 当 fetchWithTimeout 等待超过 20s 时显示，给用户交互反馈；fetch 返回后隐藏
+    _dino_overlay_html = """
+<style>
+#dinoFallback {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 17, 23, 0.96);
+  backdrop-filter: blur(6px);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: dinoFadeIn 0.3s ease;
+}
+#dinoFallback.show { display: flex; }
+@keyframes dinoFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.dino-card {
+  max-width: 640px;
+  width: 100%;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 16px;
+  padding: 28px 24px 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+.dino-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(210, 153, 29, 0.15);
+  color: #d2991d;
+  border-radius: 12px;
+  font-size: 0.78em;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+.dino-card h2 {
+  margin: 0 0 6px;
+  font-size: 1.25em;
+  background: linear-gradient(90deg, #d2991d, #f85149);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.dino-sub {
+  color: #8b949e;
+  font-size: 0.85em;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+.dino-game-wrap {
+  margin: 12px 0;
+  padding: 10px;
+  background: #0a0e14;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+}
+#dinoCanvas {
+  display: block;
+  width: 100%;
+  max-width: 580px;
+  height: 170px;
+  margin: 0 auto;
+  background: #0a0e14;
+  image-rendering: pixelated;
+}
+.dino-hint {
+  color: #8b949e;
+  font-size: 0.78em;
+  margin-top: 8px;
+  font-family: Consolas, monospace;
+}
+.dino-hint kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #58a6ff;
+  margin: 0 2px;
+}
+.dino-score {
+  color: #58a6ff;
+  font-family: Consolas, monospace;
+  margin-left: 8px;
+}
+.dino-progress {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 8px;
+  color: #58a6ff;
+  font-size: 0.82em;
+  text-align: left;
+  line-height: 1.7;
+}
+.dino-progress code {
+  color: #3fb950;
+  font-family: Consolas, monospace;
+}
+.dino-cancel {
+  margin-top: 12px;
+  padding: 8px 22px;
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.88em;
+}
+.dino-cancel:hover { border-color: #f85149; color: #f85149; }
+</style>
+
+<div id="dinoFallback">
+  <div class="dino-card">
+    <span class="dino-badge">⏳ 后端响应较慢</span>
+    <h2 id="dinoTitle">等待中... 先玩一会儿</h2>
+    <p class="dino-sub" id="dinoSubTitle">请求已发出，后端仍在处理（可能涉及 LLM 调用或多轮解析）</p>
+    <div class="dino-game-wrap">
+      <canvas id="dinoCanvas" width="580" height="170"></canvas>
+      <div class="dino-hint">
+        按 <kbd>空格</kbd> 或 <kbd>↑</kbd> 跳跃 · 避开仙人掌 · 分数<span class="dino-score" id="dinoScore">0</span> · 最高<span class="dino-score" id="dinoBest">0</span>
+      </div>
+    </div>
+    <div class="dino-progress">
+      <div>📡 请求仍在进行中，<code>fetchWithTimeout</code> 不会被打断</div>
+      <div>⏱ 软超时阈值：<code>20 秒</code>（后台继续，前端有交互）</div>
+      <div id="dinoElapsed">⏳ 已等待：0 秒</div>
+    </div>
+    <button class="dino-cancel" onclick="hideDinoFallback()">隐藏游戏（继续等待）</button>
+  </div>
+</div>
+
+<script>
+var _dinoGameInst = null;
+var _dinoElapsedTimer = null;
+var _dinoStartTime = 0;
+
+function showDinoFallback(reason) {
+  var el = document.getElementById('dinoFallback');
+  if (!el) return;
+  el.classList.add('show');
+  var subEl = document.getElementById('dinoSubTitle');
+  if (reason && subEl) subEl.textContent = reason;
+  _dinoStartTime = Date.now();
+  // 启动 / 恢复恐龙游戏
+  if (!_dinoGameInst) {
+    _dinoGameInst = new DinoGameSoft();
+    _dinoGameInst.start();
+  } else {
+    _dinoGameInst.resume();
+  }
+  // 启动已等待时间计时
+  if (_dinoElapsedTimer) clearInterval(_dinoElapsedTimer);
+  _dinoElapsedTimer = setInterval(function() {
+    var sec = Math.floor((Date.now() - _dinoStartTime) / 1000);
+    var eEl = document.getElementById('dinoElapsed');
+    if (eEl) eEl.textContent = '⏳ 已等待：' + sec + ' 秒';
+  }, 1000);
+}
+
+function hideDinoFallback() {
+  var el = document.getElementById('dinoFallback');
+  if (el) el.classList.remove('show');
+  if (_dinoElapsedTimer) { clearInterval(_dinoElapsedTimer); _dinoElapsedTimer = null; }
+  if (_dinoGameInst) _dinoGameInst.pause();
+}
+
+// 软超时恐龙游戏（与 GitHub Pages 跳转页的实现保持一致）
+class DinoGameSoft {
+  constructor() {
+    this.canvas = document.getElementById('dinoCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.W = this.canvas.width;
+    this.H = this.canvas.height;
+    this.groundY = this.H - 28;
+    this.dino = { x: 50, y: this.groundY - 28, w: 22, h: 28, vy: 0, jumping: false };
+    this.gravity = 0.7;
+    this.jumpV = -10.5;
+    this.cacti = [];
+    this.clouds = [];
+    this.speed = 5;
+    this.score = 0;
+    this.best = parseInt(localStorage.getItem('soft_dino_best') || '0', 10);
+    var bestEl = document.getElementById('dinoBest');
+    if (bestEl) bestEl.textContent = this.best;
+    this.spawnTimer = 0;
+    this.cloudTimer = 0;
+    this.running = false;
+    this.gameOver = false;
+    this.bindKeys();
+  }
+  bindKeys() {
+    var self = this;
+    this._keyHandler = function(e) {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        if (self.gameOver) { self.reset(); self.start(); return; }
+        if (!self.dino.jumping) { self.dino.vy = self.jumpV; self.dino.jumping = true; }
+      }
+    };
+    document.addEventListener('keydown', this._keyHandler);
+    this._touchHandler = function() {
+      if (self.gameOver) { self.reset(); self.start(); return; }
+      if (!self.dino.jumping) { self.dino.vy = self.jumpV; self.dino.jumping = true; }
+    };
+    if (this.canvas) {
+      this.canvas.addEventListener('touchstart', function(e) { e.preventDefault(); self._touchHandler(); }, { passive: false });
+      this.canvas.addEventListener('click', function() { self._touchHandler(); });
+    }
+  }
+  reset() {
+    this.dino.y = this.groundY - this.dino.h;
+    this.dino.vy = 0;
+    this.dino.jumping = false;
+    this.cacti = [];
+    this.clouds = [];
+    this.score = 0;
+    this.speed = 5;
+    this.gameOver = false;
+    this.spawnTimer = 0;
+    this.cloudTimer = 0;
+    var scEl = document.getElementById('dinoScore');
+    if (scEl) scEl.textContent = '0';
+  }
+  start() { this.running = true; this.loop(); }
+  pause() { this.running = false; }
+  resume() { if (!this.running) { this.running = true; this.loop(); } }
+  loop() {
+    if (!this.running) return;
+    this.update();
+    this.draw();
+    requestAnimationFrame(this.loop.bind(this));
+  }
+  update() {
+    if (this.gameOver) return;
+    this.dino.y += this.dino.vy;
+    this.dino.vy += this.gravity;
+    if (this.dino.y >= this.groundY - this.dino.h) {
+      this.dino.y = this.groundY - this.dino.h;
+      this.dino.vy = 0;
+      this.dino.jumping = false;
+    }
+    this.spawnTimer--;
+    if (this.spawnTimer <= 0) {
+      var minGap = Math.max(40, 90 - this.speed * 3);
+      var maxGap = Math.max(80, 160 - this.speed * 3);
+      this.spawnTimer = minGap + Math.floor(Math.random() * (maxGap - minGap));
+      var h = 18 + Math.floor(Math.random() * 22);
+      this.cacti.push({ x: this.W, y: this.groundY - h, w: 12 + Math.floor(Math.random() * 8), h: h });
+    }
+    this.cloudTimer--;
+    if (this.cloudTimer <= 0) {
+      this.cloudTimer = 80 + Math.floor(Math.random() * 80);
+      this.clouds.push({ x: this.W, y: 18 + Math.floor(Math.random() * 50), w: 36 });
+    }
+    for (var i = 0; i < this.cacti.length; i++) this.cacti[i].x -= this.speed;
+    for (var j = 0; j < this.clouds.length; j++) this.clouds[j].x -= 2;
+    this.cacti = this.cacti.filter(function(c) { return c.x + c.w > 0; });
+    this.clouds = this.clouds.filter(function(c) { return c.x + c.w > 0; });
+    for (var k = 0; k < this.cacti.length; k++) {
+      var c = this.cacti[k];
+      if (this.dino.x < c.x + c.w && this.dino.x + this.dino.w > c.x &&
+          this.dino.y < c.y + c.h && this.dino.y + this.dino.h > c.y) {
+        this.endGame();
+        return;
+      }
+    }
+    this.score++;
+    var scEl = document.getElementById('dinoScore');
+    if (scEl) scEl.textContent = Math.floor(this.score / 5);
+    if (this.score % 200 === 0) this.speed += 0.4;
+  }
+  endGame() {
+    this.gameOver = true;
+    var sc = Math.floor(this.score / 5);
+    if (sc > this.best) {
+      this.best = sc;
+      localStorage.setItem('soft_dino_best', String(sc));
+      var bestEl = document.getElementById('dinoBest');
+      if (bestEl) bestEl.textContent = this.best;
+    }
+  }
+  draw() {
+    var ctx = this.ctx;
+    ctx.fillStyle = '#0a0e14';
+    ctx.fillRect(0, 0, this.W, this.H);
+    // 地面
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, this.groundY);
+    ctx.lineTo(this.W, this.groundY);
+    ctx.stroke();
+    // 地面虚线
+    ctx.setLineDash([8, 12]);
+    ctx.beginPath();
+    ctx.moveTo(0, this.groundY + 8);
+    ctx.lineTo(this.W, this.groundY + 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 云
+    ctx.fillStyle = '#8b949e';
+    for (var i = 0; i < this.clouds.length; i++) {
+      var cl = this.clouds[i];
+      ctx.fillRect(cl.x, cl.y, cl.w, 6);
+      ctx.fillRect(cl.x + 6, cl.y - 4, cl.w - 12, 4);
+      ctx.fillRect(cl.x + 12, cl.y, cl.w - 24, 4);
+    }
+    // 仙人掌
+    ctx.fillStyle = '#3fb950';
+    for (var j = 0; j < this.cacti.length; j++) {
+      var ca = this.cacti[j];
+      ctx.fillRect(ca.x, ca.y, ca.w, ca.h);
+      ctx.fillRect(ca.x - 4, ca.y + 6, 4, 8);
+      ctx.fillRect(ca.x + ca.w, ca.y + 8, 4, 6);
+    }
+    // 恐龙
+    ctx.fillStyle = '#58a6ff';
+    var d = this.dino;
+    ctx.fillRect(d.x, d.y, 12, 20);
+    ctx.fillRect(d.x + 12, d.y - 6, 10, 12);
+    ctx.fillRect(d.x + 18, d.y - 4, 4, 2);
+    ctx.fillRect(d.x + 2, d.y + 20, 4, 8);
+    ctx.fillRect(d.x + 10, d.y + 20, 4, 8);
+    // GAME OVER
+    if (this.gameOver) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(0, 0, this.W, this.H);
+      ctx.fillStyle = '#f85149';
+      ctx.font = 'bold 22px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', this.W / 2, this.H / 2 - 10);
+      ctx.fillStyle = '#c9d1d9';
+      ctx.font = '13px Consolas, monospace';
+      ctx.fillText('按 空格 / 点击 重新开始', this.W / 2, this.H / 2 + 16);
+    }
+  }
+}
+</script>
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -2224,13 +2570,35 @@ footer {{
 let currentMode = 'basic';
 
 // 带 AbortController 超时的 fetch 封装（PythonAnywhere 免费版 100 秒限制，设 85 秒兜底）
+// 同时实现"软超时恐龙游戏"：超过 20s 后端未响应时显示恐龙游戏作为交互反馈，但 fetch 继续等
+var DINO_SOFT_TIMEOUT_MS = 20000;
+var _dinoSoftTimer = null;
+var _dinoGameInstance = null;
+
 function fetchWithTimeout(url, options, timeoutMs) {{
     timeoutMs = timeoutMs || 85000;
     var controller = new AbortController();
     var signal = controller.signal;
     var opts = Object.assign({{}}, options || {{}}, {{ signal: signal }});
     var timer = setTimeout(function() {{ controller.abort(); }}, timeoutMs);
-    return fetch(url, opts).finally(function() {{ clearTimeout(timer); }});
+
+    // 启动软超时定时器：20s 后显示恐龙游戏（仅当请求耗时较长时）
+    _dinoSoftTimer = setTimeout(function() {{
+        showDinoFallback('后端正在处理，可能涉及 LLM 调用 / 数据解析。先玩一会儿游戏吧');
+    }}, DINO_SOFT_TIMEOUT_MS);
+
+    return fetch(url, opts)
+        .then(function(resp) {{
+            if (_dinoSoftTimer) {{ clearTimeout(_dinoSoftTimer); _dinoSoftTimer = null; }}
+            hideDinoFallback();
+            return resp;
+        }})
+        .catch(function(err) {{
+            if (_dinoSoftTimer) {{ clearTimeout(_dinoSoftTimer); _dinoSoftTimer = null; }}
+            hideDinoFallback();
+            throw err;
+        }})
+        .finally(function() {{ clearTimeout(timer); }});
 }}
 
 function isTimeoutError(e) {{
@@ -2686,6 +3054,7 @@ function loadTunnelStatus() {{
         }});
 }}
 </script>
+{_dino_overlay_html}
 </body>
 </html>"""
 
