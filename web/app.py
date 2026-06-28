@@ -1627,11 +1627,26 @@ body {{
     .top-bar .actions {{
         justify-content: flex-start;
     }}
+    .top-brand-sub {{
+        display: none;
+    }}
+    .scan-pulse {{
+        display: none;
+    }}
     .tab-bar {{
         padding: 8px 10px;
         overflow-x: auto;
         flex-wrap: nowrap;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }}
+    .tab-bar::-webkit-scrollbar {{
+        display: none;
+    }}
+    .tab {{
+        padding: 6px 12px;
+        font-size: 0.78em;
+        white-space: nowrap;
     }}
 }}
 .tab-bar {{
@@ -1662,6 +1677,23 @@ body {{
 .tab small {{ font-size: 0.75em; opacity: 0.7; }}
 .content-area {{
     padding: 20px;
+    transition: opacity 0.3s ease;
+}}
+.fade-in {{
+    animation: fadeInUp 0.4s ease;
+}}
+.content-area .repo-card,
+.content-area .custom-card,
+.content-area .section-card {{
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: border-color 0.25s, box-shadow 0.25s;
+}}
+.content-area .repo-card:hover,
+.content-area .custom-card:hover,
+.content-area .section-card:hover {{
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(88, 166, 255, 0.15);
 }}
 .spinner {{
     display: none;
@@ -3030,22 +3062,32 @@ function confirmSubscribe() {{
 }}
 
 function refreshData() {{
+    var btn = event.target;
+    var origText = btn.textContent;
+    btn.textContent = '⏳ 刷新中...';
+    btn.disabled = true;
     showSpinner();
     fetchWithTimeout('/api/refresh')
         .then(r => r.json())
         .then(data => {{
             if (data.html) {{
-                document.getElementById('content').innerHTML = data.html;
+                document.getElementById('content').innerHTML = '<div class="fade-in">' + data.html + '</div>';
                 document.getElementById('reportDate').textContent = '📅 ' + data.date;
                 hideSpinner();
                 showToast();
+                btn.textContent = '✅ 已刷新';
+                setTimeout(function() {{ btn.textContent = origText; btn.disabled = false; }}, 2000);
             }} else {{
                 hideSpinner();
+                btn.textContent = origText;
+                btn.disabled = false;
                 alert(data.msg || '刷新失败，请等待定时任务运行');
             }}
         }})
         .catch(e => {{
             hideSpinner();
+            btn.textContent = origText;
+            btn.disabled = false;
             alert(isTimeoutError(e) ? '刷新超时，请稍后重试' : ('刷新失败: ' + e));
         }});
 }}
