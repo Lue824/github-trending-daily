@@ -489,7 +489,7 @@ class DinoGame {
 
     this.cacti = [];
     this.clouds = [];
-    this.speed = 5;
+    this.speed = 3.5;
     this.score = 0;
     this.best = parseInt(localStorage.getItem('dino_best') || '0', 10);
     document.getElementById('gameBest').textContent = this.best;
@@ -527,7 +527,7 @@ class DinoGame {
     this.cacti = [];
     this.clouds = [];
     this.score = 0;
-    this.speed = 5;
+    this.speed = 3.5;
     this.gameOver = false;
     this.spawnTimer = 0;
     this.cloudTimer = 0;
@@ -540,7 +540,10 @@ class DinoGame {
     if (!this.running) return;
     this.update();
     this.draw();
-    requestAnimationFrame(() => this.loop());
+    // 关键修复：gameOver 时不再调度下一帧，避免按空格重启时启动多个 RAF 循环
+    if (!this.gameOver) {
+      requestAnimationFrame(() => this.loop());
+    }
   }
   update() {
     if (this.gameOver) return;
@@ -583,7 +586,7 @@ class DinoGame {
     // 计分
     this.score++;
     document.getElementById('gameScore').textContent = Math.floor(this.score / 5);
-    if (this.score % 200 === 0) this.speed += 0.4;
+    if (this.score % 200 === 0) this.speed += 0.25;
   }
   endGame() {
     this.gameOver = true;

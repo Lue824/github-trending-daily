@@ -1172,7 +1172,7 @@ class DinoGameSoft {
     this.jumpV = -10.5;
     this.cacti = [];
     this.clouds = [];
-    this.speed = 5;
+    this.speed = 3.5;
     this.score = 0;
     this.best = parseInt(localStorage.getItem('soft_dino_best') || '0', 10);
     var bestEl = document.getElementById('dinoBest');
@@ -1209,7 +1209,7 @@ class DinoGameSoft {
     this.cacti = [];
     this.clouds = [];
     this.score = 0;
-    this.speed = 5;
+    this.speed = 3.5;
     this.gameOver = false;
     this.spawnTimer = 0;
     this.cloudTimer = 0;
@@ -1223,7 +1223,10 @@ class DinoGameSoft {
     if (!this.running) return;
     this.update();
     this.draw();
-    requestAnimationFrame(this.loop.bind(this));
+    // 关键修复：gameOver 时不再调度下一帧，避免按空格重启时启动多个 RAF 循环
+    if (!this.gameOver) {
+      requestAnimationFrame(this.loop.bind(this));
+    }
   }
   update() {
     if (this.gameOver) return;
@@ -1262,7 +1265,7 @@ class DinoGameSoft {
     this.score++;
     var scEl = document.getElementById('dinoScore');
     if (scEl) scEl.textContent = Math.floor(this.score / 5);
-    if (this.score % 200 === 0) this.speed += 0.4;
+    if (this.score % 200 === 0) this.speed += 0.25;
   }
   endGame() {
     this.gameOver = true;
