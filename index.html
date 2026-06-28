@@ -8,14 +8,20 @@
 :root {
   --bg: #0d1117;
   --bg-card: #161b22;
+  --bg-elevated: #1c2333;
   --border: #30363d;
   --text: #c9d1d9;
   --text-dim: #8b949e;
   --accent: #58a6ff;
+  --accent-cyan: #39d0d8;
   --accent-green: #3fb950;
   --accent-orange: #d2991d;
   --accent-red: #f85149;
   --accent-purple: #a371f7;
+  --accent-glow: rgba(88, 166, 255, 0.4);
+  --gradient-brand: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%);
+  --gradient-radar: linear-gradient(90deg, #39d0d8, #58a6ff);
+  --shadow-glow: 0 0 20px rgba(88, 166, 255, 0.3);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -30,17 +36,45 @@ body {
   background-image:
     radial-gradient(circle at 20% 20%, rgba(88, 166, 255, 0.08), transparent 40%),
     radial-gradient(circle at 80% 80%, rgba(163, 113, 247, 0.08), transparent 40%);
+  position: relative;
+  overflow: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 600px;
+  height: 600px;
+  margin: -300px 0 0 -300px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(57, 208, 216, 0.06) 40deg, transparent 80deg, transparent 360deg);
+  animation: radarBgSweep 4s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+@keyframes radarBgSweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes radarSweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .card {
   max-width: 540px;
   width: 100%;
-  background: var(--bg-card);
+  background: rgba(22, 27, 34, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 40px 32px;
   text-align: center;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 40px rgba(88, 166, 255, 0.08);
   animation: fadeInUp 0.6s ease;
+  position: relative;
+  z-index: 1;
 }
 .card.wide { max-width: 720px; }
 @keyframes fadeInUp {
@@ -304,6 +338,28 @@ h1 {
 <!-- ====== 正常态：探活中 / 倒计时跳转 ====== -->
 <div class="card" id="liveCard">
   <span class="badge">🏆 TRAE AI 创造力大赛</span>
+  <div style="margin: 0 auto 16px; width: 48px; height: 48px; position: relative;">
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="position:absolute;top:0;left:0">
+      <circle cx="24" cy="24" r="22" stroke="#58a6ff" stroke-width="1" opacity="0.15"/>
+      <circle cx="24" cy="24" r="16" stroke="#58a6ff" stroke-width="1" opacity="0.25"/>
+      <circle cx="24" cy="24" r="10" stroke="#58a6ff" stroke-width="1" opacity="0.4"/>
+      <line x1="24" y1="2" x2="24" y2="46" stroke="#30363d" stroke-width="0.5"/>
+      <line x1="2" y1="24" x2="46" y2="24" stroke="#30363d" stroke-width="0.5"/>
+      <circle cx="33" cy="15" r="2" fill="#3fb950"/>
+      <circle cx="15" cy="32" r="2" fill="#a371f7"/>
+      <circle cx="32" cy="33" r="1.5" fill="#d2991d"/>
+      <circle cx="24" cy="24" r="3" fill="#58a6ff"/>
+      <g style="transform-origin: 24px 24px; animation: radarSweep 3s linear infinite;">
+        <path d="M24 24 L24 2 A22 22 0 0 1 38 10 Z" fill="url(#scanGradIdx)" opacity="0.5"/>
+      </g>
+      <defs>
+        <linearGradient id="scanGradIdx" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#39d0d8" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#39d0d8" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  </div>
   <h1>GitRadar</h1>
   <p class="subtitle">GitHub 开源项目雷达 · TRAE AI 创造力大赛</p>
 

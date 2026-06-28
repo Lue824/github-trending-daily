@@ -503,7 +503,75 @@ def generate_custom_report(
     elif supplemented > 0:
         footer_note = "（含补充项目）"
 
-    return f"""<div class="container custom-container">
+    gitradar_style = '''<style>
+/* GitRadar 品牌样式 — 深色科技蓝（与 web/app.py 一致） */
+:root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-cyan: #39d0d8;
+    --accent-purple: #a371f7;
+    --accent-green: #3fb950;
+    --accent-orange: #d2991d;
+    --accent-red: #f85149;
+    --gradient-brand: linear-gradient(135deg, #58a6ff 0%, #a371f7 100%);
+}
+.custom-container {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.report-section h2,
+.report-section h3 {
+    background: linear-gradient(90deg, #58a6ff, #a371f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+}
+.custom-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+.custom-card:hover {
+    border-color: #58a6ff;
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(88, 166, 255, 0.3);
+}
+.custom-card .repo-name,
+.custom-card .repo-name:visited {
+    color: #58a6ff;
+    text-decoration: none;
+}
+.custom-card .repo-name:hover {
+    text-decoration: underline;
+}
+footer {
+    text-align: center;
+    padding: 24px 16px;
+    color: #8b949e;
+    font-size: 0.82em;
+    border-top: 1px solid #30363d;
+    margin-top: 32px;
+}
+footer .brand {
+    background: linear-gradient(90deg, #58a6ff, #a371f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+</style>'''
+
+    return gitradar_style + f"""<div class="container custom-container">
 <div class="report-header">
 <h1>🔧 自定义日报 <span class="date">— {esc(topic)}</span></h1>
 <div class="report-meta">生成时间 {now} · 解析来源 {esc(source)}</div>
@@ -515,7 +583,7 @@ def generate_custom_report(
 
 {"".join(sections_html)}
 
-<footer>📬 自定义报告由 GitRadar Bot 生成{footer_note}</footer>
+<footer><div class="brand">GitRadar · GitHub 开源项目雷达</div>📬 自定义报告由 GitRadar Bot 生成{footer_note}</footer>
 </div>"""
 
 
